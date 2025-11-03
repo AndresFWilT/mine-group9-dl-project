@@ -9,8 +9,8 @@ from io import BytesIO
 
 # Configuración de la página
 st.set_page_config(
-    page_title="🐱🐶 Cat vs Dog Classifier",
-    page_icon="🐾",
+    page_title="🐦 BirdID-Piciformes",
+    page_icon="🐦",
     layout="centered"
 )
 
@@ -67,8 +67,9 @@ def predict_image(model, image):
     processed_image = preprocess_image(image)
     prediction = model.predict(processed_image, verbose=0)
     
-    # Asumiendo que tienes 2 clases: [cat, dog]
-    class_names = ['Gato 🐱', 'Perro 🐶']
+    # Nota: Usando modelo temporal (cat/dog) hasta que se entrene el modelo de Piciformes
+    # Clases temporales para adaptación a aves Piciformes
+    class_names = ['Piciformes Tipo A 🐦', 'Piciformes Tipo B 🐦']
     predicted_class = np.argmax(prediction[0])
     confidence = prediction[0][predicted_class]
     
@@ -87,7 +88,8 @@ def load_sample_image(image_url):
 
 # Interfaz principal
 def main():
-    st.title("🐾 Cat vs Dog Classifier")
+    st.title("🐦 BirdID-Piciformes")
+    st.markdown("**Detección e identificación automática de aves Piciformes**")
     st.markdown("---")
     
     # Cargar modelo
@@ -103,11 +105,11 @@ def main():
     with st.sidebar:
         st.header("📊 Información del Modelo")
         st.info("""
-        **Modelo**: CNN para clasificación Cat vs Dog
+        **Modelo**: YOLOv11 - Detector de aves Piciformes
         
         **Entrada**: Imagen 128x128 píxeles
         
-        **Clases**: Gato 🐱 | Perro 🐶
+        **Orden**: Piciformes 🐦
         
         **Formato**: JPG, PNG, JPEG
         """)
@@ -129,7 +131,7 @@ def main():
 
     st.header("📤 Subir imagen")
     uploaded_file = st.file_uploader(
-        "Selecciona una imagen de un gato o perro",
+        "Selecciona una imagen de un ave del orden Piciformes",
         type=['jpg', 'jpeg', 'png'],
         help="Formatos soportados: JPG, JPEG, PNG"
     )
@@ -148,9 +150,9 @@ def main():
     base_image_url = "https://raw.githubusercontent.com/nicolastibata/MINE_4210_ADL_202520/main/labs/Laboratorio_6/Streamlit/"
     
     sample_images_url = {
-        "Gato": base_image_url + "cat.jpg",
-        "Perro": base_image_url + "dog1.png",
-        "Otro Perro": base_image_url + "dog2.png"
+        "Ave 1": base_image_url + "cat.jpg",
+        "Ave 2": base_image_url + "dog1.png",
+        "Ave 3": base_image_url + "dog2.png"
     }
 
     def set_sample_image_from_url(url):
@@ -161,25 +163,25 @@ def main():
             st.session_state.last_uploaded_file_id = None
 
     with col1:
-        cat_image = load_sample_image(sample_images_url["Gato"])
-        if cat_image:
-            st.image(cat_image, caption="Gato de ejemplo", use_container_width=True)
-            if st.button("Usar Gato"):
-                set_sample_image_from_url(sample_images_url["Gato"])
+        bird_image_1 = load_sample_image(sample_images_url["Ave 1"])
+        if bird_image_1:
+            st.image(bird_image_1, caption="Ave Piciforme - Ejemplo 1", use_container_width=True)
+            if st.button("Usar Ave 1"):
+                set_sample_image_from_url(sample_images_url["Ave 1"])
 
     with col2:
-        dog_image = load_sample_image(sample_images_url["Perro"])
-        if dog_image:
-            st.image(dog_image, caption="Perro de ejemplo", use_container_width=True)
-            if st.button("Usar Perro"):
-                set_sample_image_from_url(sample_images_url["Perro"])
+        bird_image_2 = load_sample_image(sample_images_url["Ave 2"])
+        if bird_image_2:
+            st.image(bird_image_2, caption="Ave Piciforme - Ejemplo 2", use_container_width=True)
+            if st.button("Usar Ave 2"):
+                set_sample_image_from_url(sample_images_url["Ave 2"])
 
     with col3:
-        another_dog_image = load_sample_image(sample_images_url["Otro Perro"])
-        if another_dog_image:
-            st.image(another_dog_image, caption="Otro Perro de ejemplo", use_container_width=True)
-            if st.button("Usar Otro Perro"):
-                set_sample_image_from_url(sample_images_url["Otro Perro"])
+        bird_image_3 = load_sample_image(sample_images_url["Ave 3"])
+        if bird_image_3:
+            st.image(bird_image_3, caption="Ave Piciforme - Ejemplo 3", use_container_width=True)
+            if st.button("Usar Ave 3"):
+                set_sample_image_from_url(sample_images_url["Ave 3"])
 
     # Usar la imagen del estado de la sesión
     image_to_predict = st.session_state.image_to_predict
@@ -199,20 +201,20 @@ def main():
 
     # Botón de predicción
     if image_to_predict is not None:
-        if st.button("🚀 Clasificar Imagen", type="primary"):
-            with st.spinner("🤖 Analizando imagen..."):
+        if st.button("🚀 Identificar Ave Piciforme", type="primary"):
+            with st.spinner("🔍 Detectando y clasificando ave..."):
                 # Hacer predicción
                 predicted_class, confidence, all_predictions = predict_image(model, image_to_predict)
                 
                 # Mostrar resultados
                 st.markdown("---")
-                st.subheader("📋 Resultados")
+                st.subheader("📋 Resultados de Identificación")
                 
                 # Métricas principales
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.metric("Predicción", predicted_class)
+                    st.metric("Especie Identificada", predicted_class)
                 
                 with col2:
                     st.metric("Confianza", f"{confidence:.2%}")
@@ -221,11 +223,11 @@ def main():
                 st.progress(float(confidence))
                 
                 # Distribución de probabilidades
-                st.subheader("📊 Distribución de Probabilidades")
+                st.subheader("📊 Top-K Predicciones")
                 
-                class_names = ['Gato 🐱', 'Perro 🐶']
+                class_names = ['Piciformes Tipo A 🐦', 'Piciformes Tipo B 🐦']
                 prob_data = {
-                    'Clase': class_names,
+                    'Especie': class_names,
                     'Probabilidad': [f"{prob:.2%}" for prob in all_predictions],
                     'Valor': all_predictions
                 }
@@ -233,17 +235,17 @@ def main():
                 # Crear gráfico de barras
                 import pandas as pd
                 df = pd.DataFrame(prob_data)
-                st.bar_chart(data=df.set_index('Clase')['Valor'])
+                st.bar_chart(data=df.set_index('Especie')['Valor'])
                 
                 # Interpretación del resultado
                 st.subheader("🧠 Interpretación")
                 
                 if confidence > 0.8:
-                    st.success(f"🎯 **Alta confianza**: El modelo está muy seguro de que es un {predicted_class.lower()}")
+                    st.success(f"🎯 **Alta confianza**: El modelo está muy seguro de la identificación de {predicted_class.lower()}")
                 elif confidence > 0.6:
-                    st.warning(f"⚡ **Confianza media**: El modelo piensa que probablemente es un {predicted_class.lower()}")
+                    st.warning(f"⚡ **Confianza media**: El modelo sugiere que probablemente corresponde a {predicted_class.lower()}")
                 else:
-                    st.error(f"❓ **Baja confianza**: El modelo no está muy seguro. La imagen podría ser ambigua.")
+                    st.error("❓ **Baja confianza**: El modelo no está muy seguro. La imagen podría ser ambigua o requerir mejor calidad.")
 
 # Ejecutar app
 if __name__ == "__main__":
