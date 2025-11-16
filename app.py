@@ -1,79 +1,42 @@
 import streamlit as st
-import tensorflow as tf
+from ultralytics import YOLO
 import numpy as np
 from PIL import Image
 import cv2
 import os
 import requests
 from io import BytesIO
+from huggingface_hub import hf_hub_download
 
 # Configuración de la página
-st.set_page_config(
-    page_title="🐦 BirdID-Piciformes",
-    page_icon="🐦",
-    layout="centered"
-)
+st.set_page_config(page_title="🐦 BirdID-Piciformes", page_icon="🐦", layout="centered")
 
-# Cache del modelo para evitar recargarlo en cada interacción
 @st.cache_resource
-def load_model():
-    # URL de descarga directa de tu modelo en Hugging Face Hub
-    model_url = "https://huggingface.co/nicolastibata/my_cat_dog_model/resolve/main/my_cat_dog_model.keras"
-    model_path = "my_cat_dog_model.keras"
+def load_yolo(model_path: str):
+    return YOLO(model_path)
 
-    # Descargar el modelo solo si no existe
-    if not os.path.exists(model_path):
-        with st.spinner("Descargando el modelo... esto puede tomar un momento."):
-            response = requests.get(model_url)
-            with open(model_path, "wb") as f:
-                f.write(response.content)
+@st.cache_resource
+def load_yolo_from_hf(repo_id: str, filename: str = "best.pt", revision: str | None = None):
+    downloaded = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
+    return YOLO(downloaded)
+def draw_detections(pil_image: Image.Image, yolo_result, class_names):
+    image = np.array(pil_image.convert("RGB"))
+    for box, cls_id, conf in zip(
+        yolo_result.boxes.xyxy.cpu().numpy(),
+        yolo_result.boxes.cls.cpu().numpy().astype(int),
+        yolo_result.boxes.conf.cpu().numpy(),
+    ):
+        x1, y1, x2, y2 = box.astype(int)
+        label = f"{class_names[cls_id]} {conf:.2f}"
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 200, 0), 2)
+        cv2.rectangle(image, (x1, y1 - 20), (x1 + 8 * len(label), y1), (0, 200, 0), -1)
+        cv2.putText(image, label, (x1 + 4, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+    return Image.fromarray(image)
 
-    return tf.keras.models.load_model(model_path)
-
-model = load_model()
-# def load_model():
-#     """Cargar el modelo entrenado"""
-#     try:
-#         model = tf.keras.models.load_model('my_cat_dog_model.keras')
-#         return model
-#     except Exception as e:
-#         st.error(f"Error cargando el modelo: {e}")
-#         return None
-
-def preprocess_image(_image, target_size=(128, 128)):
-    """Preprocesar imagen para el modelo"""
-    # Convertir a RGB si es necesario
-    if _image.mode != 'RGB':
-        image = _image.convert('RGB')
-    else:
-        image = _image
-
-    # Redimensionar
-    image = image.resize(target_size)
-
-    # Convertir a array numpy
-    img_array = np.array(image)
-
-    # Normalizar (igual que en entrenamiento)
-    img_array = img_array.astype(np.float32) / 255.0
-
-    # Agregar dimensión del batch
-    img_array = np.expand_dims(img_array, axis=0)
-
-    return img_array
-
-def predict_image(model, image):
-    """Hacer predicción"""
-    processed_image = preprocess_image(image)
-    prediction = model.predict(processed_image, verbose=0)
-    
-    # Nota: Usando modelo temporal (cat/dog) hasta que se entrene el modelo de Piciformes
-    # Clases temporales para adaptación a aves Piciformes
-    class_names = ['Piciformes Tipo A 🐦', 'Piciformes Tipo B 🐦']
-    predicted_class = np.argmax(prediction[0])
-    confidence = prediction[0][predicted_class]
-    
-    return class_names[predicted_class], confidence, prediction[0]
+def run_yolo_inference(yolo_model: YOLO, image: Image.Image):
+    result = yolo_model.predict(image, verbose=False)[0]
+    names = yolo_model.names
+    return result, names
 
 @st.cache_data
 def load_sample_image(image_url):
@@ -92,34 +55,35 @@ def main():
     st.markdown("**Detección e identificación automática de aves Piciformes**")
     st.markdown("---")
     
-    # Cargar modelo
-    model = load_model()
-    
-    if model is None:
-        st.error("❌ No se pudo cargar el modelo. Verifica que el archivo existe.")
-        return
-    
-    st.success("✅ Modelo cargado correctamente")
+    # Modelo YOLO únicamente desde Hugging Face
+    st.sidebar.text("Modelo YOLO (Hugging Face)")
+    repo_id = st.sidebar.text_input(
+        "Hugging Face repo_id",
+        value="basernisi/birdid-piciformes-yolo11n",
+        help="Por ejemplo: usuario/proyecto",
+    )
+    filename = st.sidebar.text_input("Archivo en repo (pt)", value="best.pt")
+    revision = st.sidebar.text_input("Revisión (opcional)", value="")
+
+    model_loaded = None
+    model_load_error = None
+    if repo_id and filename:
+        try:
+            model_loaded = load_yolo_from_hf(repo_id, filename, revision if revision.strip() else None)
+            st.sidebar.success(f"✅ Modelo YOLO cargado: {repo_id}:{filename}")
+        except Exception as e:
+            model_load_error = str(e)
+            st.sidebar.error(f"❌ Error cargando desde Hugging Face: {e}")
     
     # Sidebar con información
     with st.sidebar:
         st.header("📊 Información del Modelo")
         st.info("""
-        **Modelo**: YOLOv11 - Detector de aves Piciformes
-        
-        **Entrada**: Imagen 128x128 píxeles
-        
+        **Modelo**: YOLOv11 (Ultralytics) - Piciformes (7 clases)
+        **Entrada**: Imagen libre (redimensiona internamente)
         **Orden**: Piciformes 🐦
-        
         **Formato**: JPG, PNG, JPEG
         """)
-        
-        # Mostrar arquitectura del modelo
-        if st.checkbox("Ver arquitectura del modelo"):
-            st.text("Capas del modelo:")
-            model_summary = []
-            model.summary(print_fn=lambda x: model_summary.append(x))
-            st.text('\n'.join(model_summary))
     
     # --- Lógica de carga y visualización de imagen ---
 
@@ -145,14 +109,11 @@ def main():
     
     col1, col2, col3 = st.columns(3)
     
-    # --- MODIFICADO ---
-    # Reemplaza esta URL base con la de tu repositorio de GitHub
-    base_image_url = "https://raw.githubusercontent.com/nicolastibata/MINE_4210_ADL_202520/main/labs/Laboratorio_6/Streamlit/"
-    
+    base_image_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Northern_flicker_02.jpg/640px-Northern_flicker_02.jpg"
     sample_images_url = {
-        "Ave 1": base_image_url + "cat.jpg",
-        "Ave 2": base_image_url + "dog1.png",
-        "Ave 3": base_image_url + "dog2.png"
+        "Ave 1": base_image_url,
+        "Ave 2": base_image_url,
+        "Ave 3": base_image_url
     }
 
     def set_sample_image_from_url(url):
@@ -195,57 +156,38 @@ def main():
             st.image(image_to_predict, use_container_width=True)
         
         with col2:
-            st.subheader("🔍 Imagen Procesada")
-            processed_display = preprocess_image(image_to_predict)
-            st.image(processed_display[0], caption="128x128 normalizada", use_container_width=True)
+            st.subheader("🔍 Lista para detección")
+            st.image(image_to_predict, caption="Entrada (RGB)", use_container_width=True)
 
     # Botón de predicción
-    if image_to_predict is not None:
+    if image_to_predict is not None and model_loaded is not None and not model_load_error:
         if st.button("🚀 Identificar Ave Piciforme", type="primary"):
             with st.spinner("🔍 Detectando y clasificando ave..."):
-                # Hacer predicción
-                predicted_class, confidence, all_predictions = predict_image(model, image_to_predict)
-                
-                # Mostrar resultados
+                result, names = run_yolo_inference(model_loaded, image_to_predict)
+                det_img = draw_detections(image_to_predict, result, names)
                 st.markdown("---")
-                st.subheader("📋 Resultados de Identificación")
-                
-                # Métricas principales
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.metric("Especie Identificada", predicted_class)
-                
-                with col2:
-                    st.metric("Confianza", f"{confidence:.2%}")
-                
-                # Barra de progreso para confianza
-                st.progress(float(confidence))
-                
-                # Distribución de probabilidades
-                st.subheader("📊 Top-K Predicciones")
-                
-                class_names = ['Piciformes Tipo A 🐦', 'Piciformes Tipo B 🐦']
-                prob_data = {
-                    'Especie': class_names,
-                    'Probabilidad': [f"{prob:.2%}" for prob in all_predictions],
-                    'Valor': all_predictions
-                }
-                
-                # Crear gráfico de barras
-                import pandas as pd
-                df = pd.DataFrame(prob_data)
-                st.bar_chart(data=df.set_index('Especie')['Valor'])
-                
-                # Interpretación del resultado
-                st.subheader("🧠 Interpretación")
-                
-                if confidence > 0.8:
-                    st.success(f"🎯 **Alta confianza**: El modelo está muy seguro de la identificación de {predicted_class.lower()}")
-                elif confidence > 0.6:
-                    st.warning(f"⚡ **Confianza media**: El modelo sugiere que probablemente corresponde a {predicted_class.lower()}")
+                st.subheader("📋 Resultados de Detección")
+                st.image(det_img, caption="Detecciones YOLOv11", use_container_width=True)
+
+                if result.boxes is not None and len(result.boxes) > 0:
+                    st.markdown("### Detalles")
+                    rows = []
+                    for box, cls_id, conf in zip(
+                        result.boxes.xyxy.cpu().numpy(),
+                        result.boxes.cls.cpu().numpy().astype(int),
+                        result.boxes.conf.cpu().numpy(),
+                    ):
+                        x1, y1, x2, y2 = box
+                        rows.append({
+                            "Especie": names[cls_id],
+                            "Confianza": float(conf),
+                            "x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2)
+                        })
+                    import pandas as pd
+                    df = pd.DataFrame(rows)
+                    st.dataframe(df, use_container_width=True)
                 else:
-                    st.error("❓ **Baja confianza**: El modelo no está muy seguro. La imagen podría ser ambigua o requerir mejor calidad.")
+                    st.warning("No se detectaron aves en esta imagen.")
 
 # Ejecutar app
 if __name__ == "__main__":
