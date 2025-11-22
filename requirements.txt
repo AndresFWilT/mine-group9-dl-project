@@ -1,12 +1,25 @@
+# Core dependencies
 streamlit
-tensorflow
 numpy
 Pillow
 opencv-python-headless>=4.8.0
 requests
-ultralytics
-torch
 pandas
 pyyaml
 tqdm
 huggingface-hub
+
+# Deep Learning frameworks
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Data augmentation
+albumentations>=1.3.0
+
+# Evaluation and visualization
+scikit-learn>=1.3.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Optional: for advanced features
+tensorboard>=2.13.0
