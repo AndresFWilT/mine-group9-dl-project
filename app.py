@@ -395,15 +395,16 @@ def main():
                 
                 # Mostrar probabilidades del identificador
                 st.markdown("**Probabilidades del Identificador:**")
+                # Orden: índice 0 = No Piciforme, índice 1 = Piciforme
                 id_data = {
-                    'Categoría': ['Piciforme', 'No Piciforme'],
+                    'Categoría': ['No Piciforme', 'Piciforme'],
                     'Probabilidad': [
-                        identifier_result['prob_piciforme'],
-                        identifier_result['prob_no_piciforme']
+                        identifier_result['prob_no_piciforme'],
+                        identifier_result['prob_piciforme']
                     ],
                     'Confianza': [
-                        f"{identifier_result['prob_piciforme']*100:.2f}%",
-                        f"{identifier_result['prob_no_piciforme']*100:.2f}%"
+                        f"{identifier_result['prob_no_piciforme']*100:.2f}%",
+                        f"{identifier_result['prob_piciforme']*100:.2f}%"
                     ]
                 }
                 import pandas as pd
