@@ -11,7 +11,6 @@ import os
 import sys
 from pathlib import Path
 import yaml
-import importlib.util
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from huggingface_hub import hf_hub_download
@@ -26,23 +25,10 @@ except ImportError:
     st.warning("⚠️ TensorFlow no está instalado. El modelo identificador no funcionará.")
 
 # Agregar src al path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(Path(__file__).parent))
 
 # Importar create_model_from_config
-try:
-    from src.models.models import create_model_from_config
-except ImportError:
-    # Si falla, intentar importar directamente
-    import importlib.util
-    models_path = project_root / "src" / "models" / "models.py"
-    if models_path.exists():
-        spec = importlib.util.spec_from_file_location("models", models_path)
-        models_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(models_module)
-        create_model_from_config = models_module.create_model_from_config
-    else:
-        raise ImportError(f"No se pudo encontrar src/models/models.py en {project_root}")
+from src.models.models import create_model_from_config
 
 # Configuración de la página
 st.set_page_config(
