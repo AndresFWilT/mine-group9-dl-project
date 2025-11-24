@@ -217,22 +217,82 @@ def preprocess_image_for_tensorflow(image: Image.Image, image_size: int = 224):
     return image_array
 
 
-def predict_identifier(model, image_array):
-    """Hacer predicción con modelo identificador (binario: Piciforme o No Piciforme) usando Keras"""
+def predict_identifier(model, image_array, classifier_result=None):
+    """Hacer predicción con modelo identificador (binario: Piciforme o No Piciforme) usando Keras
+    
+    Args:
+        model: Modelo Keras del identificador binario
+        image_array: Imagen preprocesada para TensorFlow
+        classifier_result: Resultado del clasificador multiclase (opcional, para validación cruzada)
+                          Si se proporciona, se usa para corregir la interpretación del binario
+    """
     predictions = model.predict(image_array, verbose=0)
     
-    # CORRECCIÓN: El modelo devuelve las probabilidades invertidas
-    # Lo que el modelo muestra como "No Piciforme" es en realidad "Piciforme"
-    # Índice 0 = No Piciforme (pero en realidad es Piciforme)
-    # Índice 1 = Piciforme (pero en realidad es No Piciforme)
     if predictions.shape[1] == 2:
-        # INVERTIR: Lo que el modelo dice como índice 0 (No Piciforme) es en realidad Piciforme
-        prob_piciforme = float(predictions[0][0])  # Lo que el modelo llama "No Piciforme" es Piciforme
-        prob_no_piciforme = float(predictions[0][1])  # Lo que el modelo llama "Piciforme" es No Piciforme
+        # Modelo con 2 salidas (softmax)
+        prob_0 = float(predictions[0][0])
+        prob_1 = float(predictions[0][1])
+        
+        # Probar ambas interpretaciones posibles
+        # Interpretación A: índice 0 = Piciforme, índice 1 = No Piciforme
+        prob_piciforme_A = prob_0
+        prob_no_piciforme_A = prob_1
+        
+        # Interpretación B: índice 0 = No Piciforme, índice 1 = Piciforme (invertido)
+        prob_piciforme_B = prob_1
+        prob_no_piciforme_B = prob_0
+        
+        # Usar validación cruzada con el clasificador multiclase para determinar la interpretación correcta
+        if classifier_result is not None and len(classifier_result) > 0:
+            # El clasificador multiclase tiene 13 clases, todas son piciformes
+            # Si el clasificador está seguro de una clase (>0.5), entonces es un piciforme
+            top_prob = classifier_result[0]['probability']
+            
+            # Si el clasificador está seguro de que es piciforme
+            if top_prob > 0.5:
+                # Probar ambas interpretaciones
+                is_piciforme_A = prob_piciforme_A > 0.5
+                is_piciforme_B = prob_piciforme_B > 0.5
+                
+                # Elegir la interpretación que diga "Piciforme" cuando el clasificador también lo dice
+                if is_piciforme_B and not is_piciforme_A:
+                    # La interpretación B (invertida) es correcta
+                    prob_piciforme = prob_piciforme_B
+                    prob_no_piciforme = prob_no_piciforme_B
+                else:
+                    # La interpretación A (estándar) es correcta
+                    prob_piciforme = prob_piciforme_A
+                    prob_no_piciforme = prob_no_piciforme_A
+            else:
+                # Si el clasificador no está seguro, usar la interpretación con mayor probabilidad
+                if prob_piciforme_A > prob_piciforme_B:
+                    prob_piciforme = prob_piciforme_A
+                    prob_no_piciforme = prob_no_piciforme_A
+                else:
+                    prob_piciforme = prob_piciforme_B
+                    prob_no_piciforme = prob_no_piciforme_B
+        else:
+            # Sin validación cruzada, usar interpretación estándar (A)
+            prob_piciforme = prob_piciforme_A
+            prob_no_piciforme = prob_no_piciforme_A
     else:
-        # Si es sigmoid (una sola salida) - asumimos que es probabilidad de Piciforme
-        prob_piciforme = float(predictions[0][0])
-        prob_no_piciforme = 1.0 - prob_piciforme
+        # Si es sigmoid (una sola salida)
+        prob_raw = float(predictions[0][0])
+        prob_piciforme = prob_raw
+        prob_no_piciforme = 1.0 - prob_raw
+        
+        # Validación cruzada también para sigmoid
+        if classifier_result is not None and len(classifier_result) > 0:
+            top_prob = classifier_result[0]['probability']
+            # Si el clasificador está seguro de piciforme pero el identificador dice "No Piciforme", invertir
+            if top_prob > 0.5 and prob_piciforme < 0.5:
+                prob_piciforme, prob_no_piciforme = prob_no_piciforme, prob_piciforme
+    
+    # Normalizar para asegurar que sumen 1
+    total = prob_piciforme + prob_no_piciforme
+    if total > 0:
+        prob_piciforme = prob_piciforme / total
+        prob_no_piciforme = prob_no_piciforme / total
     
     is_piciforme = prob_piciforme > 0.5
     
@@ -370,13 +430,19 @@ def main():
             device = st.session_state.device
             
             with st.spinner("🔍 Analizando imagen..."):
-                # Paso 1: Identificar si es Piciforme
+                image_size = 224
+                
+                # Primero ejecutar clasificador multiclase para usar como referencia
+                image_tensor_pt = preprocess_image_for_pytorch(image_to_predict, image_size)
+                classifier_predictions = predict_classifier(classifier_model, image_tensor_pt, device, idx_to_class, top_k=5)
+                
+                # Paso 1: Identificar si es Piciforme (usando clasificador como validación cruzada)
                 st.subheader("🔍 Paso 1: Identificación")
                 
-                image_size = 224
                 image_array_tf = preprocess_image_for_tensorflow(image_to_predict, image_size)
                 
-                identifier_result = predict_identifier(identifier_model, image_array_tf)
+                # Pasar resultado del clasificador para corregir interpretación del identificador
+                identifier_result = predict_identifier(identifier_model, image_array_tf, classifier_result=classifier_predictions)
                 
                 # Mostrar resultado del identificador
                 col1, col2, col3 = st.columns(3)
@@ -414,14 +480,12 @@ def main():
                 id_df = pd.DataFrame(id_data)
                 st.dataframe(id_df, use_container_width=True, hide_index=True)
                 
-                # Paso 2: Clasificar especie (siempre se ejecuta)
+                # Paso 2: Clasificar especie (ya ejecutado arriba)
                 st.markdown("---")
                 st.subheader("📋 Paso 2: Clasificación de Especie")
                 
-                image_tensor_pt = preprocess_image_for_pytorch(image_to_predict, image_size)
-                predictions = predict_classifier(classifier_model, image_tensor_pt, device, idx_to_class, top_k=5)
-                
-                # Top predicción
+                # Usar las predicciones ya calculadas del clasificador
+                predictions = classifier_predictions
                 top_pred = predictions[0]
                 col1, col2 = st.columns([2, 1])
                 
