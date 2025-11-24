@@ -93,6 +93,16 @@ def load_identifier_model_from_hf():
         if 'model' in checkpoint:
             model = checkpoint['model']
         elif 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+            # Remover el prefijo "backbone." de las claves si existe
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                if key.startswith('backbone.'):
+                    new_key = key.replace('backbone.', '', 1)
+                    new_state_dict[new_key] = value
+                else:
+                    new_state_dict[key] = value
+            
             # Necesitamos crear el modelo - asumimos EfficientNet para binario
             import torchvision.models as tv_models
             model = tv_models.efficientnet_b2(weights=None)
@@ -100,11 +110,27 @@ def load_identifier_model_from_hf():
                 nn.Dropout(0.3),
                 nn.Linear(model.classifier[1].in_features, 2)
             )
-            model.load_state_dict(checkpoint['model_state_dict'])
+            model.load_state_dict(new_state_dict, strict=False)
         else:
-            # Si es un dict pero no tiene 'model' ni 'model_state_dict', asumimos que es el modelo completo
-            # Esto es poco común, pero intentamos
-            raise ValueError("Formato de checkpoint no reconocido. Se espera 'model' o 'model_state_dict'")
+            # Si es un dict pero no tiene 'model' ni 'model_state_dict', podría ser el state_dict directamente
+            state_dict = checkpoint
+            # Remover el prefijo "backbone." de las claves si existe
+            new_state_dict = {}
+            for key, value in state_dict.items():
+                if key.startswith('backbone.'):
+                    new_key = key.replace('backbone.', '', 1)
+                    new_state_dict[new_key] = value
+                else:
+                    new_state_dict[key] = value
+            
+            # Crear el modelo
+            import torchvision.models as tv_models
+            model = tv_models.efficientnet_b2(weights=None)
+            model.classifier = nn.Sequential(
+                nn.Dropout(0.3),
+                nn.Linear(model.classifier[1].in_features, 2)
+            )
+            model.load_state_dict(new_state_dict, strict=False)
     else:
         # Si no es un dict, asumimos que es el modelo directamente
         model = checkpoint
