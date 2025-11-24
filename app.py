@@ -192,20 +192,26 @@ def preprocess_image_for_pytorch(image: Image.Image, image_size: int = 224):
 
 
 def preprocess_image_for_tensorflow(image: Image.Image, image_size: int = 224):
-    """Preprocesar imagen para modelo TensorFlow/Keras"""
+    """Preprocesar imagen para modelo TensorFlow/Keras
+    Equivalente al preprocesamiento usado en entrenamiento:
+    Resize -> ToTensor (escala a [0,1]) -> Normalize
+    """
     # Redimensionar
     image_resized = image.resize((image_size, image_size))
     
-    # Convertir a array numpy
+    # Convertir a array numpy RGB
     image_array = np.array(image_resized.convert('RGB'))
     
-    # Normalizar (ImageNet stats)
+    # Convertir a float32 y escalar a [0, 1] (equivalente a ToTensor)
     image_array = image_array.astype('float32') / 255.0
+    
+    # Normalizar con estadísticas de ImageNet (equivalente a Normalize)
+    # Nota: Keras usa formato HWC, PyTorch usa CHW, pero la normalización es la misma
     mean = np.array([0.485, 0.456, 0.406])
     std = np.array([0.229, 0.224, 0.225])
     image_array = (image_array - mean) / std
     
-    # Agregar dimensión batch
+    # Agregar dimensión batch (Keras espera formato: (batch, height, width, channels))
     image_array = np.expand_dims(image_array, axis=0)
     
     return image_array
