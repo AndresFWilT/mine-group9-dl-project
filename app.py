@@ -40,7 +40,7 @@ st.set_page_config(
 IDENTIFIER_REPO = "AndresFWilT/identificador-pisciformes"
 CLASSIFIER_REPO = "AndresFWilT/clasificador-pisciformes"
 # Intentar diferentes nombres de archivo comunes
-IDENTIFIER_FILENAMES = ["best_model.h5", "model.h5", "identifier.h5", "identificador.h5"]
+IDENTIFIER_FILENAMES = ["clasificador_aves_piciformes.h5", "best_model.h5", "model.h5", "identifier.h5", "identificador.h5"]
 CLASSIFIER_FILENAMES = ["best_model.pt", "model.pt", "classifier.pt", "clasificador.pt"]
 
 # Cargar mapeo de clases
