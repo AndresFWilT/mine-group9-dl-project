@@ -11,9 +11,9 @@ import os
 import sys
 from pathlib import Path
 import yaml
+import requests
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-from huggingface_hub import hf_hub_download
 
 # TensorFlow para el modelo identificador (.h5)
 try:
@@ -37,10 +37,9 @@ st.set_page_config(
     layout="centered"
 )
 
-# URLs de los modelos en Hugging Face
-IDENTIFIER_REPO = "AndresFWilT/identificador-pisciformes"
-CLASSIFIER_REPO = "AndresFWilT/clasificador-pisciformes"
-# Nombres exactos de los archivos
+# URLs de descarga directa de los modelos en Hugging Face
+IDENTIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/identificador-pisciformes/resolve/main/clasificador_aves_piciformes.h5"
+CLASSIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/clasificador-pisciformes/resolve/main/best_model.pt"
 IDENTIFIER_FILENAME = "clasificador_aves_piciformes.h5"
 CLASSIFIER_FILENAME = "best_model.pt"
 
@@ -71,15 +70,21 @@ def load_class_mapping():
 
 
 @st.cache_resource
-def load_identifier_model_from_hf(repo_id: str = IDENTIFIER_REPO, 
-                                   filename: str = IDENTIFIER_FILENAME,
-                                   revision: str = None):
+def load_identifier_model_from_hf():
     """Cargar modelo identificador (.h5) desde Hugging Face"""
     if not TF_AVAILABLE:
         raise ImportError("TensorFlow no está disponible. Instala con: pip install tensorflow")
     
-    # Descargar modelo
-    model_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
+    # URL de descarga directa
+    model_url = IDENTIFIER_MODEL_URL
+    model_path = IDENTIFIER_FILENAME
+    
+    # Descargar modelo si no existe
+    if not os.path.exists(model_path):
+        response = requests.get(model_url)
+        response.raise_for_status()
+        with open(model_path, 'wb') as f:
+            f.write(response.content)
     
     # Cargar modelo Keras
     model = keras.models.load_model(model_path)
@@ -88,15 +93,20 @@ def load_identifier_model_from_hf(repo_id: str = IDENTIFIER_REPO,
 
 
 @st.cache_resource
-def load_classifier_model_from_hf(repo_id: str = CLASSIFIER_REPO,
-                                  filename: str = CLASSIFIER_FILENAME,
-                                  revision: str = None,
-                                  config_path: str = "configs/config.yaml"):
+def load_classifier_model_from_hf(config_path: str = "configs/config.yaml"):
     """Cargar modelo clasificador (.pt) desde Hugging Face"""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # Descargar modelo
-    model_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
+    # URL de descarga directa
+    model_url = CLASSIFIER_MODEL_URL
+    model_path = CLASSIFIER_FILENAME
+    
+    # Descargar modelo si no existe
+    if not os.path.exists(model_path):
+        response = requests.get(model_url)
+        response.raise_for_status()
+        with open(model_path, 'wb') as f:
+            f.write(response.content)
     
     # Cargar configuración
     if os.path.exists(config_path):
