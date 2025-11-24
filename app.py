@@ -221,13 +221,16 @@ def predict_identifier(model, image_array):
     """Hacer predicción con modelo identificador (binario: Piciforme o No Piciforme) usando Keras"""
     predictions = model.predict(image_array, verbose=0)
     
-    # El orden del modelo es [prob_piciforme, prob_no_piciforme]
-    # Índice 0 = Piciforme, Índice 1 = No Piciforme
+    # CORRECCIÓN: El modelo devuelve las probabilidades invertidas
+    # Lo que el modelo muestra como "No Piciforme" es en realidad "Piciforme"
+    # Índice 0 = No Piciforme (pero en realidad es Piciforme)
+    # Índice 1 = Piciforme (pero en realidad es No Piciforme)
     if predictions.shape[1] == 2:
-        prob_piciforme = float(predictions[0][0])  # Índice 0 = Piciforme
-        prob_no_piciforme = float(predictions[0][1])  # Índice 1 = No Piciforme
+        # INVERTIR: Lo que el modelo dice como índice 0 (No Piciforme) es en realidad Piciforme
+        prob_piciforme = float(predictions[0][0])  # Lo que el modelo llama "No Piciforme" es Piciforme
+        prob_no_piciforme = float(predictions[0][1])  # Lo que el modelo llama "Piciforme" es No Piciforme
     else:
-        # Si es sigmoid (una sola salida)
+        # Si es sigmoid (una sola salida) - asumimos que es probabilidad de Piciforme
         prob_piciforme = float(predictions[0][0])
         prob_no_piciforme = 1.0 - prob_piciforme
     
