@@ -1,0 +1,71 @@
+# Configuración optimizada para MÁXIMA ACCURACY
+# Diseñada para Google Colab con GPU
+
+# Dataset
+data:
+  source_dir: "/Users/jnsilvag/Downloads/Data_Esp_Pic"
+  output_dir: "data/processed"
+  splits_dir: "data/splits"
+  train_split: 0.70
+  val_split: 0.15
+  test_split: 0.15
+  image_size: 256  # Más grande para capturar más detalles
+  num_classes: 13
+  seed: 42
+
+# Modelo - MÁS GRANDE para mejor capacidad
+model:
+  architecture: "efficientnet_b2"  # B2 es mejor balance precisión/velocidad
+  pretrained: true
+  dropout_rate_1: 0.4  # Reducido ligeramente para menos regularización
+  dropout_rate_2: 0.2
+  hidden_dim_1: 512  # Head más grande
+  hidden_dim_2: 256
+
+# Entrenamiento - OPTIMIZADO PARA ACCURACY
+training:
+  batch_size: 32  # Batch más pequeño para mejor gradiente
+  epochs: 100  # Más épocas para convergencia completa
+  early_stopping_patience: 20  # Más paciencia
+  learning_rate: 0.0003  # LR inicial ligeramente mayor
+  weight_decay: 0.0001
+  optimizer: "adamw"
+  loss_function: "categorical_crossentropy"
+  label_smoothing: 0.05  # Reducido (menos regularización)
+  use_class_weights: true
+  
+  # Learning rate schedule - MÁS CUIDADOSO
+  lr_schedule:
+    type: "cosine"  # Cosine annealing suave
+    warmup_epochs: 5  # Warmup más corto
+    min_lr: 1e-7  # LR mínimo más bajo
+
+# Data Augmentation - COMPLETO Y ESTRATÉGICO
+augmentation:
+  rotation_range: 30
+  width_shift_range: 0.1
+  height_shift_range: 0.1
+  zoom_range: [0.8, 1.2]
+  horizontal_flip: true
+  brightness_range: [0.8, 1.2]
+  contrast_range: [0.8, 1.2]
+  saturation_range: [0.8, 1.2]
+  hue_shift: 0.1
+  cutout_prob: 0.3
+  cutout_size: 16
+  mixup_alpha: 0.2
+  cutmix_alpha: 1.0
+
+# Evaluación
+evaluation:
+  save_predictions: true
+  save_confusion_matrix: true
+  save_classification_report: true
+  top_k: [1, 3, 5]
+
+# Paths
+paths:
+  models_dir: "models"
+  results_dir: "results"
+  logs_dir: "logs"
+

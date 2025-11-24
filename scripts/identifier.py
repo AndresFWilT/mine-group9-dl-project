@@ -249,12 +249,16 @@ class SubsetDataset(torch.utils.data.Dataset):
 
 
 def load_config(config_path=None):
-    """Carga configuración YAML o usa valores por defecto. Limita épocas a 30 máximo"""
+    """Carga configuración YAML o usa valores por defecto optimizados"""
     if config_path is None:
         possible_paths = [
+            '/content/mine-group9-dl-project/configs/config_high_accuracy.yaml',
             '/content/mine-group9-dl-project/configs/config.yaml',
+            '/content/configs/config_high_accuracy.yaml',
             '/content/configs/config.yaml',
+            './configs/config_high_accuracy.yaml',
             './configs/config.yaml',
+            'configs/config_high_accuracy.yaml',
             'configs/config.yaml'
         ]
         for path in possible_paths:
@@ -268,43 +272,40 @@ def load_config(config_path=None):
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
-    if config['training']['epochs'] > 30:
-        config['training']['epochs'] = 30
-    
     return config
 
 
 def get_default_config():
-    """Configuración por defecto: EfficientNet-B2 pre-entrenado, 30 épocas, AdamW optimizer"""
+    """Configuración optimizada para máxima accuracy: EfficientNet-B2, 256x256, augmentations completos"""
     return {
         'data': {
             'train_split': 0.7,
             'val_split': 0.15,
             'test_split': 0.15,
-            'image_size': 224,
+            'image_size': 256,  # Aumentado para más detalles
             'num_classes': 13,
             'seed': 42
         },
         'model': {
             'architecture': 'efficientnet_b2',
             'pretrained': True,
-            'dropout_rate_1': 0.5,
-            'dropout_rate_2': 0.3,
+            'dropout_rate_1': 0.4,  # Reducido ligeramente
+            'dropout_rate_2': 0.2,
             'hidden_dim_1': 512,
             'hidden_dim_2': 256
         },
         'training': {
             'batch_size': 32,
-            'epochs': 30,
-            'early_stopping_patience': 15,
-            'learning_rate': 0.0001,
+            'epochs': 100,  # Más épocas para convergencia
+            'early_stopping_patience': 20,  # Más paciencia
+            'learning_rate': 0.0003,  # LR inicial ligeramente mayor
             'weight_decay': 0.0001,
             'optimizer': 'adamw',
-            'label_smoothing': 0.1,
+            'label_smoothing': 0.05,  # Reducido
             'use_class_weights': True,
             'lr_schedule': {
                 'type': 'cosine',
-                'min_lr': 1e-6
+                'min_lr': 1e-7
             }
         },
         'paths': {
@@ -337,7 +338,7 @@ def setup_data_from_archive(archive_path=None, extract_to='/content/Data_Esp_Pic
     if archive_path is None or not os.path.exists(archive_path):
         return None
     
-    print(f"📦 Extrayendo {archive_path}...")
+    print(f"Extrayendo {archive_path}...")
     os.makedirs(extract_to, exist_ok=True)
     
     try:
@@ -368,7 +369,7 @@ def setup_data_from_archive(archive_path=None, extract_to='/content/Data_Esp_Pic
         
         return extract_to
     except Exception as e:
-        print(f"❌ Error al extraer: {e}")
+        print(f"Error al extraer: {e}")
         return None
 
 
@@ -380,16 +381,22 @@ def get_data_loaders(data_dir, batch_size=32, image_size=224, train_split=0.7, v
     Divide automáticamente en 70% train, 15% val, 15% test
     """
     if not os.path.exists(data_dir):
-        raise ValueError(f"❌ Directorio no encontrado: {data_dir}")
+        raise ValueError(f"Directorio no encontrado: {data_dir}")
     
+    # Augmentations completos para máxima accuracy
     train_transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
+        transforms.Resize((image_size + 32, image_size + 32)),  # Resize más grande primero
+        transforms.RandomCrop(image_size),  # Crop aleatorio
         transforms.RandomRotation(30),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.1),  # Aves pueden estar invertidas
+        transforms.RandomResizedCrop(image_size, scale=(0.85, 1.0), ratio=(0.8, 1.2)),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.2),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.15))  # Regularización adicional
     ])
     
     val_transform = transforms.Compose([
@@ -402,7 +409,7 @@ def get_data_loaders(data_dir, batch_size=32, image_size=224, train_split=0.7, v
     idx_to_class = {v: k for k, v in full_dataset.class_to_idx.items()}
     num_classes = len(full_dataset.classes)
     
-    print(f"✅ Dataset: {len(full_dataset)} imágenes, {num_classes} clases")
+    print(f"Dataset: {len(full_dataset)} imagenes, {num_classes} clases")
     
     total_size = len(full_dataset)
     train_size = int(train_split * total_size)
@@ -435,7 +442,7 @@ def get_data_loaders(data_dir, batch_size=32, image_size=224, train_split=0.7, v
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=num_workers, pin_memory=torch.cuda.is_available())
     
-    print(f"📊 Splits: Train={len(train_dataset)}, Val={len(val_dataset)}, Test={len(test_dataset)}")
+    print(f"Splits: Train={len(train_dataset)}, Val={len(val_dataset)}, Test={len(test_dataset)}")
     
     return train_loader, val_loader, test_loader, idx_to_class, train_dataset
 
@@ -455,6 +462,23 @@ def calculate_class_weights(train_dataset, num_classes):
     return weights
 
 
+def freeze_backbone(model):
+    """Congela backbone, solo entrena head"""
+    for name, param in model.named_parameters():
+        if 'backbone' in name:
+            param.requires_grad = False
+        else:
+            param.requires_grad = True
+    print("Backbone congelado, solo entrenando head")
+
+
+def unfreeze_backbone(model):
+    """Descongela todo el modelo"""
+    for param in model.parameters():
+        param.requires_grad = True
+    print("Todo el modelo descongelado para fine-tuning")
+
+
 def train_epoch(model, train_loader, criterion, optimizer, device):
     """Ejecuta una época: forward pass, cálculo de loss, backward pass, actualización de pesos"""
     model.train()
@@ -470,6 +494,10 @@ def train_epoch(model, train_loader, criterion, optimizer, device):
         outputs = model(images)
         loss = criterion(outputs, labels)
         loss.backward()
+        
+        # Gradient clipping para estabilidad
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
         optimizer.step()
         
         running_loss += loss.item()
@@ -619,11 +647,8 @@ def save_model_as_keras(model, save_path, config, class_names):
 
 
 def main():
-    """Pipeline de entrenamiento: carga datos desde Colab, entrena modelo EfficientNet, evalúa en test, guarda en Drive"""
+    """Pipeline de entrenamiento mejorado: fine-tuning en dos etapas para máxima accuracy"""
     config = load_config()
-    
-    if config['training']['epochs'] > 30:
-        config['training']['epochs'] = 30
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Usando dispositivo: {device}")
@@ -655,14 +680,14 @@ def main():
     
     if data_dir is None:
         raise ValueError(
-            "❌ No se encontró el directorio de datos.\n"
+            "No se encontro el directorio de datos.\n"
             "Monta Google Drive y ejecuta:\n"
             "from google.colab import drive\n"
             "drive.mount('/content/drive')\n"
             "Luego ejecuta el script nuevamente."
         )
     
-    print(f"📂 Directorio de datos: {data_dir}")
+    print(f"Directorio de datos: {data_dir}")
     
     print("\nCargando datasets...")
     train_loader, val_loader, test_loader, idx_to_class, train_dataset = get_data_loaders(
@@ -691,41 +716,81 @@ def main():
     else:
         criterion = nn.CrossEntropyLoss(label_smoothing=config['training']['label_smoothing'])
     
-    if config['training']['optimizer'] == 'adamw':
-        optimizer = optim.AdamW(model.parameters(), 
-                               lr=config['training']['learning_rate'],
-                               weight_decay=config['training']['weight_decay'])
-    elif config['training']['optimizer'] == 'adam':
-        optimizer = optim.Adam(model.parameters(), 
-                              lr=config['training']['learning_rate'],
-                              weight_decay=config['training']['weight_decay'])
-    else:
-        optimizer = optim.SGD(model.parameters(), 
-                             lr=config['training']['learning_rate'],
-                             momentum=0.9, weight_decay=config['training']['weight_decay'])
+    # ETAPA 1: Entrenar solo Head (backbone congelado)
+    print("\n" + "="*60)
+    print("ETAPA 1: ENTRENANDO SOLO HEAD (Backbone congelado)")
+    print("="*60)
+    
+    freeze_backbone(model)
+    
+    # Optimizer solo para head con LR más alto
+    head_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = optim.AdamW(head_params, 
+                           lr=config['training']['learning_rate'] * 2,
+                           weight_decay=config['training']['weight_decay'])
     
     lr_config = config['training']['lr_schedule']
+    epochs_stage1 = min(20, config['training']['epochs'] // 4)  # 20 épocas o 25% del total
     if lr_config['type'] == 'cosine':
         min_lr = float(lr_config.get('min_lr', 1e-6))
-        scheduler = CosineAnnealingLR(optimizer, T_max=config['training']['epochs'], 
-                                     eta_min=min_lr)
+        scheduler = CosineAnnealingLR(optimizer, T_max=epochs_stage1, eta_min=min_lr)
+    else:
+        scheduler = StepLR(optimizer, step_size=10, gamma=0.5)
+    
+    best_val_acc_stage1 = 0.0
+    patience_counter = 0
+    
+    for epoch in range(epochs_stage1):
+        print(f"\nEpoca {epoch+1}/{epochs_stage1} (Etapa 1: Head)")
+        
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss, val_acc, _, _ = validate(model, val_loader, criterion, device)
+        
+        scheduler.step()
+        
+        print(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%")
+        print(f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%")
+        print(f"LR: {optimizer.param_groups[0]['lr']:.6f}")
+        
+        if val_acc > best_val_acc_stage1:
+            best_val_acc_stage1 = val_acc
+            patience_counter = 0
+        else:
+            patience_counter += 1
+        
+        if patience_counter >= 10:
+            print("Early stopping en Etapa 1")
+            break
+    
+    # ETAPA 2: Fine-tuning completo
+    print("\n" + "="*60)
+    print("ETAPA 2: FINE-TUNING COMPLETO (Todo el modelo)")
+    print("="*60)
+    
+    unfreeze_backbone(model)
+    
+    # Optimizer para todo el modelo con LR más bajo
+    optimizer = optim.AdamW(model.parameters(), 
+                           lr=config['training']['learning_rate'],
+                           weight_decay=config['training']['weight_decay'])
+    
+    epochs_stage2 = config['training']['epochs'] - epochs_stage1
+    if lr_config['type'] == 'cosine':
+        min_lr = float(lr_config.get('min_lr', 1e-7))
+        scheduler = CosineAnnealingLR(optimizer, T_max=epochs_stage2, eta_min=min_lr)
     elif lr_config['type'] == 'plateau':
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
     else:
         scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
     
-    print("\n" + "="*60)
-    print("INICIANDO ENTRENAMIENTO")
-    print("="*60)
-    
-    best_val_acc = 0.0
+    best_val_acc = best_val_acc_stage1
     best_epoch = 0
     patience_counter = 0
     train_losses, train_accs = [], []
     val_losses, val_accs = [], []
     
-    for epoch in range(config['training']['epochs']):
-        print(f"\nÉpoca {epoch+1}/{config['training']['epochs']}")
+    for epoch in range(epochs_stage2):
+        print(f"\nEpoca {epoch+1}/{epochs_stage2} (Etapa 2: Fine-tuning)")
         
         train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
         train_losses.append(train_loss)
@@ -751,23 +816,23 @@ def main():
             
             model_path = os.path.join(config['paths']['models_dir'], 'best_model.pt')
             torch.save({
-                'epoch': epoch,
+                'epoch': epoch + epochs_stage1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_acc': val_acc,
                 'config': config
             }, model_path)
-            print(f"✅ Mejor modelo guardado (Val Acc: {val_acc:.2f}%)")
+            print(f"Mejor modelo guardado (Val Acc: {val_acc:.2f}%)")
         else:
             patience_counter += 1
         
         if patience_counter >= config['training']['early_stopping_patience']:
-            print(f"\nEarly stopping en época {epoch+1}")
+            print(f"\nEarly stopping en epoca {epoch+1}")
             break
     
     print("\n" + "="*60)
     print(f"ENTRENAMIENTO COMPLETADO")
-    print(f"Mejor época: {best_epoch+1}, Mejor Val Acc: {best_val_acc:.2f}%")
+    print(f"Mejor epoca: {best_epoch+1+epochs_stage1}, Mejor Val Acc: {best_val_acc:.2f}%")
     print("="*60)
     
     print("\nEvaluando en conjunto de test...")
@@ -813,28 +878,28 @@ def main():
     drive_results_dir = '/content/drive/MyDrive/Deep Learning/results'
     
     if os.path.exists('/content/drive'):
-        print("\n💾 Guardando en Google Drive...")
+        print("\nGuardando en Google Drive...")
         try:
             os.makedirs(drive_models_dir, exist_ok=True)
             os.makedirs(drive_results_dir, exist_ok=True)
             
             drive_model_path = os.path.join(drive_models_dir, 'best_model.pt')
             shutil.copy2(model_path, drive_model_path)
-            print(f"✅ Modelo PyTorch: {drive_model_path}")
+            print(f"Modelo PyTorch guardado: {drive_model_path}")
             
             try:
                 drive_keras_path = os.path.join(drive_models_dir, 'best_model.keras')
                 save_model_as_keras(model, drive_keras_path, config, class_names)
-                print(f"✅ Modelo Keras: {drive_keras_path}")
+                print(f"Modelo Keras guardado: {drive_keras_path}")
             except Exception as e:
-                print(f"⚠️ No se pudo guardar Keras: {e}")
+                print(f"Advertencia: No se pudo guardar Keras: {e}")
             
             shutil.copy2(cm_path, os.path.join(drive_results_dir, 'confusion_matrix.png'))
             shutil.copy2(training_curves_path, os.path.join(drive_results_dir, 'training_curves.png'))
-            print(f"✅ Resultados guardados en: {drive_results_dir}")
+            print(f"Resultados guardados en: {drive_results_dir}")
             
         except Exception as e:
-            print(f"⚠️ Error al guardar en Drive: {e}")
+            print(f"Error al guardar en Drive: {e}")
 
 
 if __name__ == "__main__":

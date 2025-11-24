@@ -8,24 +8,24 @@ data:
   train_split: 0.70
   val_split: 0.15
   test_split: 0.15
-  image_size: 224
+  image_size: 160  # Reducido de 224 a 160 (más rápido, menos memoria)
   num_classes: 13
   seed: 42
 
 # Modelo
 model:
-  architecture: "efficientnet_b2"  # Opciones: efficientnet_b0/b2/b3, resnet50, vit_base
+  architecture: "efficientnet_b0"  # Cambiado a b0 (más rápido, menos parámetros)
   pretrained: true
   dropout_rate_1: 0.5
   dropout_rate_2: 0.3
-  hidden_dim_1: 512
-  hidden_dim_2: 256
+  hidden_dim_1: 256  # Reducido para más velocidad
+  hidden_dim_2: 128  # Reducido para más velocidad
 
 # Entrenamiento
 training:
-  batch_size: 32
-  epochs: 100
-  early_stopping_patience: 15
+  batch_size: 64  # Aumentado para procesar más rápido
+  epochs: 30  # Reducido significativamente
+  early_stopping_patience: 8  # Más agresivo
   learning_rate: 0.0001
   weight_decay: 0.0001
   optimizer: "adamw"  # adamw, adam, sgd
