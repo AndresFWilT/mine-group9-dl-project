@@ -228,7 +228,6 @@ def predict_identifier(model, image_array, classifier_result=None):
     """
     predictions = model.predict(image_array, verbose=0)
     
-<<<<<<< HEAD
     if predictions.shape[1] == 2:
         # Modelo con 2 salidas (softmax)
         prob_0 = float(predictions[0][0])
@@ -276,12 +275,6 @@ def predict_identifier(model, image_array, classifier_result=None):
             # Sin validación cruzada, usar interpretación estándar (A)
             prob_piciforme = prob_piciforme_A
             prob_no_piciforme = prob_no_piciforme_A
-=======
-    # Índice 1 = Piciforme, Índice 0 = No Piciforme
-    if predictions.shape[1] == 2:
-        prob_no_piciforme = float(predictions[0][0])  # Índice 0 = No Piciforme
-        prob_piciforme = float(predictions[0][1])  # Índice 1 = Piciforme
->>>>>>> refs/remotes/origin/main
     else:
         # Si es sigmoid (una sola salida)
         prob_raw = float(predictions[0][0])
