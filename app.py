@@ -221,11 +221,11 @@ def predict_identifier(model, image_array):
     """Hacer predicción con modelo identificador (binario: Piciforme o No Piciforme) usando Keras"""
     predictions = model.predict(image_array, verbose=0)
     
-    # Si es binario, el orden es [prob_no_piciforme, prob_piciforme]
-    # Índice 0 = No Piciforme, Índice 1 = Piciforme
+    # El orden del modelo es [prob_piciforme, prob_no_piciforme]
+    # Índice 0 = Piciforme, Índice 1 = No Piciforme
     if predictions.shape[1] == 2:
-        prob_no_piciforme = float(predictions[0][0])  # Índice 0 = No Piciforme
-        prob_piciforme = float(predictions[0][1])  # Índice 1 = Piciforme
+        prob_piciforme = float(predictions[0][0])  # Índice 0 = Piciforme
+        prob_no_piciforme = float(predictions[0][1])  # Índice 1 = No Piciforme
     else:
         # Si es sigmoid (una sola salida)
         prob_piciforme = float(predictions[0][0])
@@ -395,16 +395,16 @@ def main():
                 
                 # Mostrar probabilidades del identificador
                 st.markdown("**Probabilidades del Identificador:**")
-                # Orden: índice 0 = No Piciforme, índice 1 = Piciforme
+                # Orden: índice 0 = Piciforme, índice 1 = No Piciforme
                 id_data = {
-                    'Categoría': ['No Piciforme', 'Piciforme'],
+                    'Categoría': ['Piciforme', 'No Piciforme'],
                     'Probabilidad': [
-                        identifier_result['prob_no_piciforme'],
-                        identifier_result['prob_piciforme']
+                        identifier_result['prob_piciforme'],
+                        identifier_result['prob_no_piciforme']
                     ],
                     'Confianza': [
-                        f"{identifier_result['prob_no_piciforme']*100:.2f}%",
-                        f"{identifier_result['prob_piciforme']*100:.2f}%"
+                        f"{identifier_result['prob_piciforme']*100:.2f}%",
+                        f"{identifier_result['prob_no_piciforme']*100:.2f}%"
                     ]
                 }
                 import pandas as pd
