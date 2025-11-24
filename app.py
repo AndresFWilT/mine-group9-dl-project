@@ -121,37 +121,54 @@ def load_classifier_model_from_hf():
         with open(model_path, 'wb') as f:
             f.write(response.content)
     
-    # Cargar configuración
-    config_path = "configs/config.yaml"
-    if os.path.exists(config_path):
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+    # Cargar checkpoint primero para obtener la configuración
+    checkpoint = torch.load(model_path, map_location=device)
+    
+    # Intentar obtener configuración del checkpoint
+    if isinstance(checkpoint, dict) and 'config' in checkpoint:
+        config = checkpoint['config']
     else:
-        # Configuración por defecto
-        config = {
-            'data': {
-                'image_size': 224,
-                'num_classes': 13
-            },
-            'model': {
-                'architecture': 'efficientnet_b2',
-                'pretrained': True,
-                'dropout_rate_1': 0.5,
-                'dropout_rate_2': 0.3,
-                'hidden_dim_1': 512,
-                'hidden_dim_2': 256
+        # Cargar configuración desde archivo
+        config_path = "configs/config.yaml"
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+        else:
+            # Configuración por defecto - basada en el error, parece ser EfficientNet-B3
+            config = {
+                'data': {
+                    'image_size': 224,
+                    'num_classes': 13
+                },
+                'model': {
+                    'architecture': 'efficientnet_b3',
+                    'pretrained': True,
+                    'dropout_rate_1': 0.5,
+                    'dropout_rate_2': 0.3,
+                    'hidden_dim_1': 512,
+                    'hidden_dim_2': 256
+                }
             }
-        }
     
     # Crear modelo
     model = create_model_from_config(config)
     
     # Cargar pesos
-    checkpoint = torch.load(model_path, map_location=device)
-    if 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        state_dict = checkpoint['model_state_dict']
     else:
-        model.load_state_dict(checkpoint)
+        state_dict = checkpoint
+    
+    # Remover el prefijo "backbone." de las claves si existe
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('backbone.'):
+            new_key = key.replace('backbone.', '', 1)
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value
+    
+    model.load_state_dict(new_state_dict, strict=False)
     
     model = model.to(device)
     model.eval()
