@@ -11,6 +11,7 @@ import os
 import sys
 from pathlib import Path
 import yaml
+import importlib.util
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from huggingface_hub import hf_hub_download
@@ -25,9 +26,23 @@ except ImportError:
     st.warning("⚠️ TensorFlow no está instalado. El modelo identificador no funcionará.")
 
 # Agregar src al path
-sys.path.append(str(Path(__file__).parent))
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
-from src.models.models import create_model_from_config
+# Importar create_model_from_config
+try:
+    from src.models.models import create_model_from_config
+except ImportError:
+    # Si falla, intentar importar directamente
+    import importlib.util
+    models_path = project_root / "src" / "models" / "models.py"
+    if models_path.exists():
+        spec = importlib.util.spec_from_file_location("models", models_path)
+        models_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(models_module)
+        create_model_from_config = models_module.create_model_from_config
+    else:
+        raise ImportError(f"No se pudo encontrar src/models/models.py en {project_root}")
 
 # Configuración de la página
 st.set_page_config(
@@ -39,9 +54,9 @@ st.set_page_config(
 # URLs de los modelos en Hugging Face
 IDENTIFIER_REPO = "AndresFWilT/identificador-pisciformes"
 CLASSIFIER_REPO = "AndresFWilT/clasificador-pisciformes"
-# Intentar diferentes nombres de archivo comunes
-IDENTIFIER_FILENAMES = ["clasificador_aves_piciformes.h5", "best_model.h5", "model.h5", "identifier.h5", "identificador.h5"]
-CLASSIFIER_FILENAMES = ["best_model.pt", "model.pt", "classifier.pt", "clasificador.pt"]
+# Nombres exactos de los archivos
+IDENTIFIER_FILENAME = "clasificador_aves_piciformes.h5"
+CLASSIFIER_FILENAME = "best_model.pt"
 
 # Cargar mapeo de clases
 @st.cache_data
@@ -71,31 +86,14 @@ def load_class_mapping():
 
 @st.cache_resource
 def load_identifier_model_from_hf(repo_id: str = IDENTIFIER_REPO, 
-                                   filenames: list = None,
+                                   filename: str = IDENTIFIER_FILENAME,
                                    revision: str = None):
     """Cargar modelo identificador (.h5) desde Hugging Face"""
     if not TF_AVAILABLE:
         raise ImportError("TensorFlow no está disponible. Instala con: pip install tensorflow")
     
-    if filenames is None:
-        filenames = IDENTIFIER_FILENAMES
-    
-    # Intentar descargar con diferentes nombres
-    model_path = None
-    last_error = None
-    for filename in filenames:
-        try:
-            model_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
-            break
-        except Exception as e:
-            last_error = e
-            continue
-    
-    if model_path is None:
-        raise FileNotFoundError(
-            f"No se pudo encontrar el modelo identificador. Intentados: {filenames}. "
-            f"Último error: {last_error}"
-        )
+    # Descargar modelo
+    model_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
     
     # Cargar modelo Keras
     model = keras.models.load_model(model_path)
@@ -105,31 +103,14 @@ def load_identifier_model_from_hf(repo_id: str = IDENTIFIER_REPO,
 
 @st.cache_resource
 def load_classifier_model_from_hf(repo_id: str = CLASSIFIER_REPO,
-                                  filenames: list = None,
+                                  filename: str = CLASSIFIER_FILENAME,
                                   revision: str = None,
                                   config_path: str = "configs/config.yaml"):
     """Cargar modelo clasificador (.pt) desde Hugging Face"""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    if filenames is None:
-        filenames = CLASSIFIER_FILENAMES
-    
-    # Intentar descargar con diferentes nombres
-    model_path = None
-    last_error = None
-    for filename in filenames:
-        try:
-            model_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
-            break
-        except Exception as e:
-            last_error = e
-            continue
-    
-    if model_path is None:
-        raise FileNotFoundError(
-            f"No se pudo encontrar el modelo clasificador. Intentados: {filenames}. "
-            f"Último error: {last_error}"
-        )
+    # Descargar modelo
+    model_path = hf_hub_download(repo_id=repo_id, filename=filename, revision=revision)
     
     # Cargar configuración
     if os.path.exists(config_path):
@@ -272,19 +253,6 @@ def main():
     
     st.sidebar.markdown("### 📥 Cargar Modelos desde Hugging Face")
     
-    # Opciones avanzadas
-    with st.sidebar.expander("🔧 Opciones Avanzadas"):
-        identifier_filename = st.text_input(
-            "Nombre archivo Identificador (.h5)",
-            value="",
-            help="Dejar vacío para búsqueda automática"
-        )
-        classifier_filename = st.text_input(
-            "Nombre archivo Clasificador (.pt)",
-            value="",
-            help="Dejar vacío para búsqueda automática"
-        )
-    
     # Botón para cargar ambos modelos
     if st.sidebar.button("🔄 Cargar Modelos desde Hugging Face", type="primary", use_container_width=True):
         with st.sidebar:
@@ -292,16 +260,14 @@ def main():
                 try:
                     # Cargar identificador
                     if TF_AVAILABLE:
-                        id_filenames = [identifier_filename] if identifier_filename else IDENTIFIER_FILENAMES
-                        identifier_model = load_identifier_model_from_hf(filenames=id_filenames)
+                        identifier_model = load_identifier_model_from_hf()
                         st.session_state.identifier_model = identifier_model
                         st.success("✅ Identificador cargado")
                     else:
                         st.error("❌ TensorFlow no disponible")
                     
                     # Cargar clasificador
-                    clf_filenames = [classifier_filename] if classifier_filename else CLASSIFIER_FILENAMES
-                    classifier_model, device, config = load_classifier_model_from_hf(filenames=clf_filenames)
+                    classifier_model, device, config = load_classifier_model_from_hf()
                     st.session_state.classifier_model = classifier_model
                     st.session_state.device = device
                     st.session_state.config = config
@@ -309,7 +275,6 @@ def main():
                     
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
-                    st.info("💡 Intenta especificar el nombre del archivo en 'Opciones Avanzadas'")
     
     # Información de los modelos
     with st.sidebar:
