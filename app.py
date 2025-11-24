@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 import yaml
 import requests
+import importlib.util
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
@@ -25,10 +26,21 @@ except ImportError:
     st.warning("⚠️ TensorFlow no está instalado. El modelo identificador no funcionará.")
 
 # Agregar src al path
-sys.path.insert(0, str(Path(__file__).parent))
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
-# Importar create_model_from_config
-from src.models.models import create_model_from_config
+# Importar create_model_from_config de manera robusta
+import importlib.util
+models_path = project_root / "src" / "models" / "models.py"
+if models_path.exists():
+    spec = importlib.util.spec_from_file_location("models_models", models_path)
+    models_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(models_module)
+    create_model_from_config = models_module.create_model_from_config
+else:
+    # Si no existe, definimos una función dummy (no se usa actualmente)
+    def create_model_from_config(config):
+        raise NotImplementedError("create_model_from_config no está disponible")
 
 # Configuración de la página
 st.set_page_config(
