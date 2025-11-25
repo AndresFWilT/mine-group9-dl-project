@@ -155,7 +155,7 @@ def load_classifier_model_from_hf():
     model_config = model_config_json['config']
     
     # Reconstruir el modelo desde la configuración
-    model = keras.models.model_from_config(model_config)
+    model = tf.keras.models.model_from_config(model_config)
     
     # Cargar los pesos
     try:
