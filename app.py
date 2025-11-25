@@ -151,46 +151,11 @@ def load_classifier_model_from_hf():
     with open(config_file, 'r', encoding='utf-8') as f:
         model_config_json = json.load(f)
     
-    # Reconstruir el modelo desde la configuración JSON
-    # Keras puede guardar config.json en diferentes formatos
-    model_config = None
+    # Obtener la configuración del modelo (el campo 'config' contiene la arquitectura)
+    model_config = model_config_json['config']
     
-    # Intentar diferentes estructuras de config.json
-    if isinstance(model_config_json, dict):
-        # Caso 1: config.json contiene directamente la configuración del modelo
-        if 'model_config' in model_config_json:
-            model_config = model_config_json['model_config']
-        elif 'config' in model_config_json:
-            model_config = model_config_json['config']
-        elif 'class_name' in model_config_json or 'layers' in model_config_json:
-            # Es la configuración directa del modelo
-            model_config = model_config_json
-        else:
-            # Podría ser metadata, intentar buscar la estructura del modelo
-            model_config = model_config_json
-    
-    # Reconstruir el modelo
-    try:
-        # Método 1: model_from_config (Keras 2.x y 3.x)
-        if hasattr(keras.models, 'model_from_config'):
-            model = keras.models.model_from_config(model_config)
-        elif hasattr(keras.saving, 'model_from_config'):
-            model = keras.saving.model_from_config(model_config)
-        # Método 2: model_from_json (si config es string JSON)
-        elif isinstance(model_config, str):
-            model = keras.models.model_from_json(model_config)
-        else:
-            # Convertir dict a JSON string y usar model_from_json
-            model = keras.models.model_from_json(json.dumps(model_config))
-    except Exception as e:
-        # Si falla, intentar con keras.saving (Keras 3)
-        try:
-            if hasattr(keras.saving, 'load_model'):
-                # Último recurso: intentar cargar como si fuera un modelo completo
-                # (aunque no debería funcionar sin los pesos)
-                raise ValueError(f"No se pudo reconstruir el modelo. Error: {e}")
-        except Exception as e2:
-            raise ValueError(f"Error al cargar modelo desde config.json: {e2}. Config keys: {list(model_config_json.keys()) if isinstance(model_config_json, dict) else 'N/A'}")
+    # Reconstruir el modelo desde la configuración
+    model = keras.models.model_from_config(model_config)
     
     # Cargar los pesos
     try:
