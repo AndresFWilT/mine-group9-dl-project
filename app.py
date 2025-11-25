@@ -364,55 +364,58 @@ def main():
             classifier_model = st.session_state.classifier_model
             device = st.session_state.device
             
-            with st.spinner("🔍 Analizando imagen..."):
-                classifier_image_size = 224
+            import pandas as pd
+            
+            # ========== PASO 1: IDENTIFICACIÓN ==========
+            with st.spinner("🔍 Identificando si es un Piciforme..."):
                 identifier_image_size = getattr(identifier_model, '_identifier_image_size', 300)
-                
-                image_tensor_pt = preprocess_image_for_pytorch(image_to_predict, classifier_image_size)
-                classifier_predictions = predict_classifier(classifier_model, image_tensor_pt, device, idx_to_class, top_k=5)
-                
-                st.subheader("🔍 Paso 1: Identificación")
-                
                 image_array_tf = preprocess_image_for_tensorflow(image_to_predict, identifier_image_size)
                 identifier_result = predict_identifier(identifier_model, image_array_tf)
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if identifier_result['is_piciforme']:
-                        st.success("✅ **Es un Piciforme**")
-                    else:
-                        st.error("❌ **No es un Piciforme**")
-                
-                with col2:
-                    st.metric(
-                        "Confianza",
-                        identifier_result['confidence']
-                    )
-                
-                with col3:
-                    st.progress(identifier_result['prob_piciforme'])
-                
-                st.markdown("**Probabilidades del Identificador:**")
-                id_data = {
-                    'Categoría': ['Piciforme', 'No Piciforme'],
-                    'Probabilidad': [
-                        identifier_result['prob_piciforme'],
-                        identifier_result['prob_no_piciforme']
-                    ],
-                    'Confianza': [
-                        f"{identifier_result['prob_piciforme']*100:.2f}%",
-                        f"{identifier_result['prob_no_piciforme']*100:.2f}%"
-                    ]
-                }
-                import pandas as pd
-                id_df = pd.DataFrame(id_data)
-                st.dataframe(id_df, use_container_width=True, hide_index=True)
-                
+            
+            st.subheader("🔍 Paso 1: Identificación")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if identifier_result['is_piciforme']:
+                    st.success("✅ **Es un Piciforme**")
+                else:
+                    st.error("❌ **No es un Piciforme**")
+            
+            with col2:
+                st.metric(
+                    "Confianza",
+                    identifier_result['confidence']
+                )
+            
+            with col3:
+                st.progress(identifier_result['prob_piciforme'])
+            
+            st.markdown("**Probabilidades del Identificador:**")
+            id_data = {
+                'Categoría': ['Piciforme', 'No Piciforme'],
+                'Probabilidad': [
+                    identifier_result['prob_piciforme'],
+                    identifier_result['prob_no_piciforme']
+                ],
+                'Confianza': [
+                    f"{identifier_result['prob_piciforme']*100:.2f}%",
+                    f"{identifier_result['prob_no_piciforme']*100:.2f}%"
+                ]
+            }
+            id_df = pd.DataFrame(id_data)
+            st.dataframe(id_df, use_container_width=True, hide_index=True)
+            
+            # ========== PASO 2: CLASIFICACIÓN (solo si es Piciforme) ==========
+            if identifier_result['is_piciforme']:
                 st.markdown("---")
                 st.subheader("📋 Paso 2: Clasificación de Especie")
                 
-                predictions = classifier_predictions
+                with st.spinner("🔍 Clasificando especie..."):
+                    classifier_image_size = 224
+                    image_tensor_pt = preprocess_image_for_pytorch(image_to_predict, classifier_image_size)
+                    predictions = predict_classifier(classifier_model, image_tensor_pt, device, idx_to_class, top_k=5)
+                
                 top_pred = predictions[0]
                 col1, col2 = st.columns([2, 1])
                 
@@ -464,8 +467,9 @@ def main():
                         f"Considera revisar las otras opciones."
                     )
                 else:
-                    st.error(
-                        f"❓ **Baja confianza**: Confianza combinada: **{overall_conf*100:.1f}%**. "
+                    st.warning(
+                        f"⚠️ **Confianza baja en especie**: Es un Piciforme pero la clasificación "
+                        f"de especie tiene baja confianza ({top_pred['confidence']}). "
                         f"La imagen podría ser ambigua o requerir mejor calidad."
                     )
                 
@@ -474,7 +478,7 @@ def main():
                 summary_data = {
                     'Modelo': ['Identificador', 'Clasificador', 'Combinado'],
                     'Resultado': [
-                        'Piciforme' if identifier_result['is_piciforme'] else 'No Piciforme',
+                        'Piciforme',
                         format_class_name(top_pred['class']),
                         format_class_name(top_pred['class'])
                     ],
@@ -483,6 +487,23 @@ def main():
                         top_pred['confidence'],
                         f"{overall_conf*100:.2f}%"
                     ]
+                }
+                summary_df = pd.DataFrame(summary_data)
+                st.dataframe(summary_df, use_container_width=True, hide_index=True)
+            
+            else:
+                # No es Piciforme - NO ejecutar clasificador
+                st.markdown("---")
+                st.info(
+                    "ℹ️ **Clasificación de especie omitida**: La imagen no fue identificada como "
+                    "un ave Piciforme, por lo que no se ejecutará el clasificador de especies."
+                )
+                st.markdown("---")
+                st.subheader("📊 Resumen del Análisis")
+                summary_data = {
+                    'Modelo': ['Identificador'],
+                    'Resultado': ['No Piciforme'],
+                    'Confianza': [identifier_result['confidence']]
                 }
                 summary_df = pd.DataFrame(summary_data)
                 st.dataframe(summary_df, use_container_width=True, hide_index=True)
