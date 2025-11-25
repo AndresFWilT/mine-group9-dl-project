@@ -444,11 +444,12 @@ def main():
         
         with col2:
             st.subheader("🔍 Preprocesada")
-            # Obtener tamaño de imagen del config si está disponible
+            # Mostrar ambos tamaños (identificador y clasificador)
             config = st.session_state.get('config', {})
-            image_size = config.get('data', {}).get('image_size', 256)
-            processed_display = image_to_predict.resize((image_size, image_size))
-            st.image(processed_display, caption=f"{image_size}×{image_size} (entrada del modelo)", 
+            classifier_size = config.get('data', {}).get('image_size', 300)
+            identifier_size = 224
+            processed_display = image_to_predict.resize((classifier_size, classifier_size))
+            st.image(processed_display, caption=f"Clasificador: {classifier_size}×{classifier_size} | Identificador: {identifier_size}×{identifier_size}", 
                     use_container_width=True)
     
     # Predicción
@@ -462,20 +463,27 @@ def main():
             identifier_model = st.session_state.identifier_model
             classifier_model = st.session_state.classifier_model
             config = st.session_state.get('config', {})
-            image_size = config.get('data', {}).get('image_size', 256)
+            
+            # Obtener tamaños de imagen para cada modelo
+            classifier_image_size = config.get('data', {}).get('image_size', 300)
+            # El identificador siempre usa 224x224
+            identifier_image_size = 224
             
             with st.spinner("🔍 Analizando imagen..."):
-                # Preprocesar imagen para ambos modelos (Keras/TensorFlow)
-                image_array_tf = preprocess_image_for_tensorflow(image_to_predict, image_size)
+                # Preprocesar imagen para clasificador (300x300)
+                image_array_classifier = preprocess_image_for_tensorflow(image_to_predict, classifier_image_size)
+                
+                # Preprocesar imagen para identificador (224x224)
+                image_array_identifier = preprocess_image_for_tensorflow(image_to_predict, identifier_image_size)
                 
                 # Primero ejecutar clasificador multiclase para usar como referencia
-                classifier_predictions = predict_classifier(classifier_model, image_array_tf, idx_to_class, top_k=5)
+                classifier_predictions = predict_classifier(classifier_model, image_array_classifier, idx_to_class, top_k=5)
                 
                 # Paso 1: Identificar si es Piciforme (usando clasificador como validación cruzada)
                 st.subheader("🔍 Paso 1: Identificación")
                 
                 # Pasar resultado del clasificador para corregir interpretación del identificador
-                identifier_result = predict_identifier(identifier_model, image_array_tf, classifier_result=classifier_predictions)
+                identifier_result = predict_identifier(identifier_model, image_array_identifier, classifier_result=classifier_predictions)
                 
                 # Mostrar resultado del identificador
                 col1, col2, col3 = st.columns(3)
