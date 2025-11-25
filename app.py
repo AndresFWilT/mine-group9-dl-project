@@ -316,11 +316,15 @@ def main():
         identifier_loaded = 'identifier_model' in st.session_state
         classifier_loaded = 'classifier_model' in st.session_state
         
-        st.info(f"""
-        **Identificador**: {'✅ Cargado' if identifier_loaded else '❌ No cargado'}
-        **Clasificador**: {'✅ Cargado' if classifier_loaded else '❌ No cargado'}
-        **Clases**: {len(class_names)}
-        **Dispositivo**: {st.session_state.get('device', 'No cargado')}
+        st.markdown(f"""
+        **🔍 Identificador** {'✅' if identifier_loaded else '❌'}  
+        Clasificación binaria: determina si la imagen es un ave Piciforme o no.
+        
+        **📋 Clasificador** {'✅' if classifier_loaded else '❌'}  
+        Clasificación multiclase: identifica la especie entre {len(class_names)} clases de Piciformes.
+        
+        ---
+        **Dispositivo**: {st.session_state.get('device', 'No cargado')}  
         **Formato**: JPG, PNG, JPEG
         """)
     
