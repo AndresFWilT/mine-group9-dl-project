@@ -54,19 +54,25 @@ BirdID-Piciformes es una aplicación web que utiliza **dos modelos de Deep Learn
 
 ### Especies clasificadas (13 clases)
 
-1. Aulacorhynchus prasinus
-2. Campephilus melanoleucos
-3. Colaptes punctigula
-4. Colaptes rubiginosus
-5. Dryocopus lineatus
-6. Melanerpes formicivorus
-7. Melanerpes pucherani
-8. Melanerpes rubricapillus
-9. Pteroglossus castanotis
-10. Pteroglossus torquatus
-11. Ramphastos ambiguus
-12. Ramphastos sulfuratus
-13. Piciforme No Inventariado
+Las especies fueron seleccionadas mediante el cruce de la **lista oficial de Piciformes reportados para Colombia** (BirdColombia) con las **especies disponibles en el dataset de iNaturalist**, garantizando relevancia taxonómica y disponibilidad de datos de entrenamiento.
+
+| # | Especie | Familia |
+|---|---------|---------|
+| 1 | Aulacorhynchus prasinus | Ramphastidae |
+| 2 | Campephilus melanoleucos | Picidae |
+| 3 | Colaptes punctigula | Picidae |
+| 4 | Colaptes rubiginosus | Picidae |
+| 5 | Dryocopus lineatus | Picidae |
+| 6 | Melanerpes formicivorus | Picidae |
+| 7 | Melanerpes pucherani | Picidae |
+| 8 | Melanerpes rubricapillus | Picidae |
+| 9 | Pteroglossus castanotis | Ramphastidae |
+| 10 | Pteroglossus torquatus | Ramphastidae |
+| 11 | Ramphastos ambiguus | Ramphastidae |
+| 12 | Ramphastos sulfuratus | Ramphastidae |
+| 13 | Piciforme No Inventariado | — |
+
+> **Nota:** La clase "Piciforme No Inventariado" agrupa especies de Piciformes presentes en iNaturalist que no están en la lista oficial de BirdColombia.
 
 ---
 

@@ -10,27 +10,38 @@ Este modelo constituye la segunda etapa del sistema de clasificación en cascada
 
 ## 2. Conjunto de Datos
 
-### 2.1 Descripción del Dataset
+### 2.1 Origen y Selección de Especies
 
-El conjunto de datos comprende imágenes de **13 especies** de aves Piciformes distribuidas de la siguiente manera:
+Las especies incluidas en el modelo fueron seleccionadas mediante el **cruce de dos fuentes de datos**:
 
-| Clase | Especie | Familia |
-|-------|---------|---------|
-| 0 | Aulacorhynchus prasinus | Ramphastidae |
-| 1 | Campephilus melanoleucos | Picidae |
-| 2 | Colaptes punctigula | Picidae |
-| 3 | Colaptes rubiginosus | Picidae |
-| 4 | Dryocopus lineatus | Picidae |
-| 5 | Melanerpes formicivorus | Picidae |
-| 6 | Melanerpes pucherani | Picidae |
-| 7 | Melanerpes rubricapillus | Picidae |
-| 8 | Piciforme No Inventariado | Múltiples |
-| 9 | Pteroglossus castanotis | Ramphastidae |
-| 10 | Pteroglossus torquatus | Ramphastidae |
-| 11 | Ramphastos ambiguus | Ramphastidae |
-| 12 | Ramphastos sulfuratus | Ramphastidae |
+1. **BirdColombia:** Lista oficial de especies del orden Piciformes reportadas para Colombia.
+2. **iNaturalist:** Dataset de observaciones de biodiversidad con imágenes etiquetadas por especie.
 
-### 2.2 Partición del Dataset
+Este cruce garantiza que las especies seleccionadas cumplan dos criterios: (1) relevancia taxonómica para la avifauna colombiana, y (2) disponibilidad suficiente de imágenes para entrenamiento supervisado.
+
+### 2.2 Descripción del Dataset
+
+El conjunto de datos comprende imágenes de **13 clases** de aves Piciformes:
+
+| Clase | Especie | Familia | Origen |
+|-------|---------|---------|--------|
+| 0 | Aulacorhynchus prasinus | Ramphastidae | BirdColombia ∩ iNaturalist |
+| 1 | Campephilus melanoleucos | Picidae | BirdColombia ∩ iNaturalist |
+| 2 | Colaptes punctigula | Picidae | BirdColombia ∩ iNaturalist |
+| 3 | Colaptes rubiginosus | Picidae | BirdColombia ∩ iNaturalist |
+| 4 | Dryocopus lineatus | Picidae | BirdColombia ∩ iNaturalist |
+| 5 | Melanerpes formicivorus | Picidae | BirdColombia ∩ iNaturalist |
+| 6 | Melanerpes pucherani | Picidae | BirdColombia ∩ iNaturalist |
+| 7 | Melanerpes rubricapillus | Picidae | BirdColombia ∩ iNaturalist |
+| 8 | Piciforme No Inventariado | — | iNaturalist \ BirdColombia |
+| 9 | Pteroglossus castanotis | Ramphastidae | BirdColombia ∩ iNaturalist |
+| 10 | Pteroglossus torquatus | Ramphastidae | BirdColombia ∩ iNaturalist |
+| 11 | Ramphastos ambiguus | Ramphastidae | BirdColombia ∩ iNaturalist |
+| 12 | Ramphastos sulfuratus | Ramphastidae | BirdColombia ∩ iNaturalist |
+
+**Nota:** La clase "Piciforme No Inventariado" agrupa especies de Piciformes presentes en iNaturalist que no están registradas en la lista oficial de BirdColombia, permitiendo al modelo manejar especies fuera del inventario nacional.
+
+### 2.3 Partición del Dataset
 
 Se aplicó una estrategia de partición aleatoria estratificada con semilla fija (seed=42) para garantizar reproducibilidad:
 

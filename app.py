@@ -321,7 +321,7 @@ def main():
         Clasificación binaria: determina si la imagen es un ave Piciforme o no.
         
         **📋 Clasificador** {'✅' if classifier_loaded else '❌'}  
-        Clasificación multiclase: identifica la especie entre {len(class_names)} clases de Piciformes.
+        Clasificación multiclase: identifica entre {len(class_names)} especies de Piciformes (cruce BirdColombia × iNaturalist).
         
         ---
         **Dispositivo**: {st.session_state.get('device', 'No cargado')}  
