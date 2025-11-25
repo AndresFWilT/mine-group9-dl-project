@@ -154,8 +154,9 @@ def load_classifier_model_from_hf():
     # Obtener la configuración del modelo (el campo 'config' contiene la arquitectura)
     model_config = model_config_json['config']
     
-    # Reconstruir el modelo desde la configuración
-    model = tf.keras.models.model_from_config(model_config)
+    # Reconstruir el modelo desde la configuración usando tf.keras
+    # Convertir el dict a JSON string y usar model_from_json
+    model = tf.keras.models.model_from_json(json.dumps(model_config))
     
     # Cargar los pesos
     try:
