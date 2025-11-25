@@ -341,17 +341,21 @@ def main():
     image_to_predict = st.session_state.image_to_predict
     
     if image_to_predict:
-        col1, col2 = st.columns([1, 1])
+        col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
-            st.subheader("📷 Imagen Original")
+            st.subheader("📷 Original")
             st.image(image_to_predict, use_container_width=True)
         
         with col2:
-            st.subheader("🔍 Preprocesada")
-            processed_display = image_to_predict.resize((224, 224))
-            st.image(processed_display, caption="224×224 (entrada del modelo)", 
-                    use_container_width=True)
+            st.subheader("🔍 Identificador")
+            processed_identifier = image_to_predict.resize((300, 300))
+            st.image(processed_identifier, caption="300×300", use_container_width=True)
+        
+        with col3:
+            st.subheader("🔍 Clasificador")
+            processed_classifier = image_to_predict.resize((224, 224))
+            st.image(processed_classifier, caption="224×224", use_container_width=True)
     
     identifier_loaded = 'identifier_model' in st.session_state
     classifier_loaded = 'classifier_model' in st.session_state
