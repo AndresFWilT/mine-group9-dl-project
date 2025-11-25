@@ -1,182 +1,190 @@
-# 🐦 BirdID-Piciformes: Clasificación de Aves Piciformes con Deep Learning
+# 🐦 BirdID-Piciformes
 
-**Proyecto Final - Análisis de Deep Learning**
+**Sistema de Clasificación de Aves Piciformes mediante Deep Learning**
 
-Sistema de clasificación multiclase para identificar 12 especies oficiales de aves Piciformes más una clase "no_oficiales" usando redes neuronales convolucionales y transfer learning.
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://mine-group9-dl-project.streamlit.app/)
 
----
-
-## 📋 Tabla de Contenidos
-
-- [Descripción](#descripción)
-- [Dataset](#dataset)
-- [Arquitectura](#arquitectura)
-- [Instalación](#instalación)
-- [Uso](#uso)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Resultados](#resultados)
+> **Demo en vivo:** [https://mine-group9-dl-project.streamlit.app/](https://mine-group9-dl-project.streamlit.app/)
 
 ---
 
-## 🎯 Descripción
+## 📋 Descripción
 
-Este proyecto implementa un sistema de clasificación de imágenes para identificar aves del orden **Piciformes** (pájaros carpinteros, tucanes, arasaríes, barbets) mediante deep learning.
+BirdID-Piciformes es una aplicación web que utiliza **dos modelos de Deep Learning en cascada** para identificar y clasificar aves del orden Piciformes (pájaros carpinteros, tucanes, arasaríes).
 
-### Características principales:
+### Flujo de Clasificación
 
-- **13 clases**: 12 especies oficiales + 1 clase "no_oficiales"
-- **Transfer Learning**: Modelos pre-entrenados (EfficientNet, ResNet50)
-- **Data Augmentation**: Estrategias avanzadas para mejorar generalización
-- **Pipeline completo**: Preprocesamiento, entrenamiento, evaluación, visualización
-- **App interactiva**: Streamlit para demostración
-
----
-
-## 📊 Dataset
-
-### Estructura:
-- **Total de imágenes**: 1,844
-- **12 especies oficiales**: 140 imágenes cada una
-- **1 clase "no_oficiales"**: 164 imágenes
-- **División**: Train (70%) / Val (15%) / Test (15%)
-
-### Especies incluidas:
-1. Aulacorhynchus_prasinus
-2. Campephilus_melanoleucos
-3. Colaptes_punctigula
-4. Colaptes_rubiginosus
-5. Dryocopus_lineatus
-6. Melanerpes_formicivorus
-7. Melanerpes_pucherani
-8. Melanerpes_rubricapillus
-9. Pteroglossus_castanotis
-10. Pteroglossus_torquatus
-11. Ramphastos_ambiguus
-12. Ramphastos_sulfuratus
-13. Piciforme_No_Inventariado (no_oficiales)
-
----
-
-## 🏛️ Arquitectura
-
-### Modelo Base (Recomendado):
 ```
-EfficientNet-B2 (pre-entrenado ImageNet)
-    ↓
-Global Average Pooling
-    ↓
-Dense(512) + BatchNorm + ReLU
-    ↓
-Dropout(0.5)
-    ↓
-Dense(256) + BatchNorm + ReLU
-    ↓
-Dropout(0.3)
-    ↓
-Dense(13) + Softmax
+┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
+│  Imagen de      │────▶│  PASO 1: Identificador│────▶│  ¿Es Piciforme?     │
+│  entrada        │     │  (Binario)           │     │                     │
+└─────────────────┘     └──────────────────────┘     └──────────┬──────────┘
+                                                                │
+                        ┌───────────────────────────────────────┼───────────────────┐
+                        │                                       │                   │
+                        ▼                                       ▼                   │
+              ┌─────────────────┐                    ┌─────────────────┐            │
+              │  ✅ SÍ          │                    │  ❌ NO          │            │
+              │                 │                    │                 │            │
+              │  Ejecutar       │                    │  FIN            │            │
+              │  Paso 2         │                    │  (No clasificar)│            │
+              └────────┬────────┘                    └─────────────────┘            │
+                       │                                                            │
+                       ▼                                                            │
+              ┌──────────────────────┐                                              │
+              │  PASO 2: Clasificador│                                              │
+              │  (13 especies)       │                                              │
+              └────────┬─────────────┘                                              │
+                       │                                                            │
+                       ▼                                                            │
+              ┌─────────────────┐                                                   │
+              │  Especie        │                                                   │
+              │  identificada   │◀──────────────────────────────────────────────────┘
+              └─────────────────┘
 ```
 
-### Características técnicas:
-- **Transfer Learning**: Backbone pre-entrenado en ImageNet
-- **Regularización**: Dropout, BatchNorm, Weight Decay
-- **Optimizador**: AdamW con learning rate schedule (Cosine Annealing)
-- **Loss**: Categorical Cross-Entropy con Label Smoothing (0.1)
-- **Class Weights**: Balanceo automático de clases
+---
 
-### Data Augmentation:
-- Rotación (±30°)
-- Flip horizontal
-- Zoom (0.8-1.2)
-- Ajustes de brillo/contraste/saturación
-- Cutout/Random Erasing
-- Shift/Scale
+## 🧠 Modelos
+
+| Modelo | Framework | Arquitectura | Tarea | Entrada |
+|--------|-----------|--------------|-------|---------|
+| **Identificador** | TensorFlow/Keras | EfficientNetV2 | Clasificación binaria (Piciforme / No Piciforme) | 300×300 px |
+| **Clasificador** | PyTorch | EfficientNet-B3 | Clasificación multiclase (13 especies) | 224×224 px |
+
+### Especies clasificadas (13 clases)
+
+1. Aulacorhynchus prasinus
+2. Campephilus melanoleucos
+3. Colaptes punctigula
+4. Colaptes rubiginosus
+5. Dryocopus lineatus
+6. Melanerpes formicivorus
+7. Melanerpes pucherani
+8. Melanerpes rubricapillus
+9. Pteroglossus castanotis
+10. Pteroglossus torquatus
+11. Ramphastos ambiguus
+12. Ramphastos sulfuratus
+13. Piciforme No Inventariado
 
 ---
 
-## 🚀 Instalación
+## 🔧 Tecnologías
 
-### Requisitos:
+### Frameworks de Deep Learning
+- **TensorFlow/Keras** - Modelo identificador (binario)
+- **PyTorch** - Modelo clasificador (multiclase)
+
+### Librerías principales
+```
+streamlit          # Interfaz web
+tensorflow         # Modelo identificador
+torch              # Modelo clasificador
+torchvision        # Arquitecturas pre-entrenadas
+albumentations     # Preprocesamiento de imágenes
+pillow             # Manipulación de imágenes
+numpy              # Operaciones numéricas
+pandas             # Visualización de datos
+pyyaml             # Configuración
+requests           # Descarga de modelos
+```
+
+### Hosting
+- **Streamlit Cloud** - Despliegue de la aplicación
+- **Hugging Face Hub** - Almacenamiento de modelos
+
+---
+
+## 🚀 Cómo funciona
+
+### 1. Carga de modelos
+Los modelos se descargan automáticamente desde Hugging Face Hub al presionar el botón "Cargar Modelos":
+
+```python
+# Identificador (TensorFlow/Keras)
+IDENTIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/clasificador-pisciformes/..."
+
+# Clasificador (PyTorch)  
+CLASSIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/identificador-pisciformes/..."
+```
+
+### 2. Preprocesamiento
+
+**Identificador (300×300):**
+```python
+# Usa preprocesamiento nativo de EfficientNet
+image_array = tf.keras.applications.efficientnet.preprocess_input(image_array)
+```
+
+**Clasificador (224×224):**
+```python
+# Normalización ImageNet estándar
+A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+```
+
+### 3. Inferencia en cascada
+
+```python
+# PASO 1: Identificación binaria
+identifier_result = predict_identifier(identifier_model, image_array_tf)
+
+# PASO 2: Solo si es Piciforme
+if identifier_result['is_piciforme']:
+    predictions = predict_classifier(classifier_model, image_tensor_pt, device, idx_to_class)
+```
+
+### 4. Interpretación de resultados
+
+El sistema calcula una **confianza combinada**:
+```python
+overall_conf = prob_piciforme * prob_especie
+```
+
+| Confianza combinada | Interpretación |
+|---------------------|----------------|
+| > 70% | 🎯 Alta confianza |
+| 40-70% | ⚡ Confianza media |
+| < 40% | ⚠️ Baja confianza |
+
+---
+
+## 💻 Instalación local
+
+### Requisitos
 - Python 3.8+
-- CUDA (opcional, para GPU)
+- ~4GB RAM (para cargar ambos modelos)
 
-### Pasos:
+### Pasos
 
-1. **Clonar repositorio** (o navegar al directorio):
+1. **Clonar repositorio:**
 ```bash
+git clone https://github.com/tu-usuario/mine-group9-dl-project.git
 cd mine-group9-dl-project
 ```
 
-2. **Crear entorno virtual** (recomendado):
+2. **Crear entorno virtual:**
 ```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # o
-venv\Scripts\activate  # Windows
+venv\Scripts\activate     # Windows
 ```
 
-3. **Instalar dependencias**:
+3. **Instalar dependencias:**
 ```bash
 pip install -r requirements.txt
 ```
 
----
-
-## 💻 Uso
-
-### 1. Preprocesamiento de Datos
-
-Primero, preparar los datos creando splits estratificados:
-
-```bash
-python src/data/preprocessing.py
-```
-
-Esto creará:
-- `data/splits/train.txt`, `val.txt`, `test.txt`
-- `data/splits/class_mapping.txt`
-
-**Nota**: Asegúrate de que `configs/config.yaml` tenga la ruta correcta a tu dataset:
-```yaml
-data:
-  source_dir: "/Users/jnsilvag/Downloads/Data_Esp_Pic"
-```
-
-### 2. Entrenamiento
-
-Entrenar modelo con configuración por defecto:
-
-```bash
-python scripts/train_classification.py
-```
-
-El script:
-- Carga configuración de `configs/config.yaml`
-- Crea data loaders con augmentations
-- Entrena modelo con early stopping
-- Guarda mejor modelo en `models/best_model.pt`
-- Genera métricas y visualizaciones en `results/`
-
-### 3. Configuración Personalizada
-
-Editar `configs/config.yaml` para ajustar:
-- Arquitectura del modelo (`efficientnet_b0/b2/b3`, `resnet50`)
-- Hiperparámetros (batch size, learning rate, epochs)
-- Data augmentation
-- Rutas de datos
-
-### 4. App Streamlit
-
-Ejecutar aplicación interactiva:
-
+4. **Ejecutar aplicación:**
 ```bash
 streamlit run app.py
 ```
 
-La app permite:
-- Cargar modelo entrenado
-- Subir imágenes para clasificación
-- Ver predicciones con confianza
-- Visualizar top-k predicciones
+5. **Abrir en navegador:**
+```
+http://localhost:8501
+```
 
 ---
 
@@ -184,108 +192,102 @@ La app permite:
 
 ```
 mine-group9-dl-project/
-├── configs/
-│   └── config.yaml              # Configuración centralizada
-├── data/
-│   ├── raw/                     # Dataset original
-│   ├── processed/               # Imágenes procesadas
-│   └── splits/                  # Train/val/test splits
+├── app.py                      # 🚀 Aplicación Streamlit principal
+├── requirements.txt            # 📦 Dependencias
+├── README.md                   # 📖 Documentación
+│
 ├── src/
-│   ├── data/
-│   │   ├── preprocessing.py     # Script de preprocesamiento
-│   │   └── dataset.py           # Dataset class para PyTorch
-│   ├── models/
-│   │   └── models.py            # Definición de modelos
-│   ├── training/
-│   │   └── (futuro: trainer.py)
-│   └── evaluation/
-│       └── (futuro: metrics.py)
-├── scripts/
-│   ├── train_classification.py  # Script principal de entrenamiento
-│   └── (otros scripts)
-├── notebooks/
-│   └── (notebooks de análisis)
-├── models/
-│   └── best_model.pt            # Modelo entrenado guardado
-├── results/
-│   ├── confusion_matrix.png
-│   └── training_curves.png
-├── app.py                       # App Streamlit
-├── requirements.txt
-├── README.md
-└── ARCHITECTURE_PROPOSAL.md     # Propuesta detallada de arquitectura
+│   └── models/
+│       └── models.py           # 🧠 Arquitectura EfficientNet (PyTorch)
+│
+├── configs/
+│   └── config.yaml             # ⚙️ Configuración del clasificador
+│
+└── data/
+    └── splits/
+        └── class_mapping.txt   # 🏷️ Mapeo de clases
 ```
 
 ---
 
-## 📈 Resultados
+## 🎯 Uso de la aplicación
 
-### Métricas de Evaluación:
+### Paso 1: Cargar modelos
+1. Ir a la barra lateral
+2. Presionar **"🔄 Cargar Modelos desde Hugging Face"**
+3. Esperar a que ambos modelos se descarguen y carguen
 
-El script de entrenamiento genera automáticamente:
+### Paso 2: Subir imagen
+1. Usar el botón **"Selecciona una imagen"**
+2. Formatos soportados: JPG, JPEG, PNG
+3. Ver la imagen original y las versiones preprocesadas
 
-- **Accuracy**: Precisión global y por clase
-- **Classification Report**: Precision, Recall, F1-Score por clase
-- **Matriz de Confusión**: Visualización 13×13
-- **Curvas de Entrenamiento**: Loss y Accuracy vs Épocas
-
-### Visualizaciones:
-
-- `results/confusion_matrix.png`: Matriz de confusión normalizada
-- `results/training_curves.png`: Curvas de entrenamiento
-
----
-
-## 🔬 Experimentación
-
-### Modelos disponibles:
-- **EfficientNet-B0/B2/B3**: Balance precisión/velocidad
-- **ResNet50**: Arquitectura clásica robusta
-
-### Para experimentar:
-
-1. Editar `configs/config.yaml`:
-   ```yaml
-   model:
-     architecture: "efficientnet_b3"  # Cambiar modelo
-   ```
-
-2. Ejecutar entrenamiento:
-   ```bash
-   python scripts/train_classification.py
-   ```
-
-3. Comparar resultados en `results/`
+### Paso 3: Clasificar
+1. Presionar **"🚀 Identificar Ave Piciforme"**
+2. Ver resultados del identificador (Paso 1)
+3. Si es Piciforme, ver clasificación de especie (Paso 2)
+4. Revisar interpretación combinada y resumen
 
 ---
 
-## 📝 Notas
+## 📊 Arquitectura de los modelos
 
-- **GPU recomendada**: El entrenamiento es mucho más rápido con CUDA
-- **Reproducibilidad**: Semilla fijada en configuración (seed=42)
-- **Early Stopping**: Se detiene automáticamente si no mejora en 15 épocas
-- **Class Weights**: Se calculan automáticamente para balancear clases
+### Identificador (Keras)
+```
+EfficientNetV2 (pre-entrenado)
+    ↓
+Dense(2) + Softmax
+    ↓
+[No_Piciformes, Piciformes]
+```
+
+### Clasificador (PyTorch)
+```
+EfficientNet-B3 (pre-entrenado ImageNet)
+    ↓
+AdaptiveAvgPool2d
+    ↓
+Dense(512) + BatchNorm + ReLU + Dropout(0.5)
+    ↓
+Dense(256) + BatchNorm + ReLU + Dropout(0.3)
+    ↓
+Dense(13) + Softmax
+```
 
 ---
 
 ## 🎓 Autores
 
+**Grupo 9** - Maestría en Ingeniería de la Información (MINE 2025-20)
+
 - Juan Nicolas Silva González
 - Luis Ariel Prieto
 - Andrés Felipe Wilches Torres
-
-**Grupo 9** - Maestría en Ingeniería de la Información - MINE 2025-20
 
 ---
 
 ## 📚 Referencias
 
-- EfficientNet: [Tan & Le, 2019](https://arxiv.org/abs/1905.11946)
-- Transfer Learning: Ver presentaciones del curso
-- PyTorch: [Documentación oficial](https://pytorch.org/docs/)
+- [EfficientNet: Rethinking Model Scaling for CNNs](https://arxiv.org/abs/1905.11946) - Tan & Le, 2019
+- [EfficientNetV2: Smaller Models and Faster Training](https://arxiv.org/abs/2104.00298) - Tan & Le, 2021
+- [PyTorch Documentation](https://pytorch.org/docs/)
+- [TensorFlow/Keras Documentation](https://www.tensorflow.org/api_docs)
+- [Streamlit Documentation](https://docs.streamlit.io/)
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto es parte de un trabajo académico. Ver `ARCHITECTURE_PROPOSAL.md` para detalles completos de la arquitectura propuesta.
+Proyecto académico - Análisis de Deep Learning
+
+---
+
+<div align="center">
+
+**🐦 BirdID-Piciformes**
+
+*Clasificación inteligente de aves mediante Deep Learning*
+
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://mine-group9-dl-project.streamlit.app/)
+
+</div>
