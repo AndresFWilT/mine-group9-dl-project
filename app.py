@@ -108,16 +108,24 @@ def load_identifier_model_from_hf():
 
 @st.cache_resource
 def load_classifier_model_from_hf():
-    """Cargar modelo clasificador (Keras v3 .keras) desde Hugging Face"""
+    """Cargar modelo clasificador (Keras v3) desde Hugging Face
+    El zip contiene: model.weights.h5, config.json, metadata.json
+    """
     if not TF_AVAILABLE:
         raise ImportError("TensorFlow no está disponible. Instala con: pip install tensorflow")
     
     import zipfile
+    import json
     
     # URL de descarga directa
     model_url = CLASSIFIER_MODEL_URL
     zip_path = CLASSIFIER_ZIP_FILENAME
-    model_path = CLASSIFIER_FILENAME
+    extract_dir = os.path.dirname(CLASSIFIER_FILENAME) or '.'
+    
+    # Archivos esperados dentro del zip
+    weights_file = os.path.join(extract_dir, 'model.weights.h5')
+    config_file = os.path.join(extract_dir, 'config.json')
+    metadata_file = os.path.join(extract_dir, 'metadata.json')
     
     # Descargar modelo zip si no existe
     if not os.path.exists(zip_path):
@@ -127,36 +135,72 @@ def load_classifier_model_from_hf():
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
     
-    # Extraer el archivo .keras del zip si no existe
-    if not os.path.exists(model_path):
+    # Extraer todos los archivos del zip si no existen
+    if not os.path.exists(weights_file) or not os.path.exists(config_file):
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            # Buscar el archivo .keras dentro del zip
-            keras_files = [f for f in zip_ref.namelist() if f.endswith('.keras')]
-            if keras_files:
-                # Extraer el primer archivo .keras encontrado
-                zip_ref.extract(keras_files[0], os.path.dirname(model_path) or '.')
-                # Renombrar si es necesario
-                extracted_path = os.path.join(os.path.dirname(model_path) or '.', keras_files[0])
-                if extracted_path != model_path:
-                    if os.path.exists(model_path):
-                        os.remove(model_path)
-                    os.rename(extracted_path, model_path)
-            else:
-                raise ValueError(f"No se encontró archivo .keras en el zip {zip_path}")
+            # Extraer todos los archivos
+            zip_ref.extractall(extract_dir)
     
-    # Cargar modelo Keras v3
+    # Verificar que los archivos necesarios existan
+    if not os.path.exists(weights_file):
+        raise FileNotFoundError(f"No se encontró model.weights.h5 en el zip {zip_path}")
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"No se encontró config.json en el zip {zip_path}")
+    
+    # Cargar configuración del modelo desde config.json
+    with open(config_file, 'r', encoding='utf-8') as f:
+        model_config_json = json.load(f)
+    
+    # Reconstruir el modelo desde la configuración JSON
+    # Keras puede guardar config.json en diferentes formatos
+    model_config = None
+    
+    # Intentar diferentes estructuras de config.json
+    if isinstance(model_config_json, dict):
+        # Caso 1: config.json contiene directamente la configuración del modelo
+        if 'model_config' in model_config_json:
+            model_config = model_config_json['model_config']
+        elif 'config' in model_config_json:
+            model_config = model_config_json['config']
+        elif 'class_name' in model_config_json or 'layers' in model_config_json:
+            # Es la configuración directa del modelo
+            model_config = model_config_json
+        else:
+            # Podría ser metadata, intentar buscar la estructura del modelo
+            model_config = model_config_json
+    
+    # Reconstruir el modelo
     try:
-        # Keras 3 usa keras.saving.load_model
-        model = keras.saving.load_model(model_path)
-    except AttributeError:
-        # Fallback para versiones anteriores de Keras
-        model = keras.models.load_model(model_path)
+        # Método 1: model_from_config (Keras 2.x y 3.x)
+        if hasattr(keras.models, 'model_from_config'):
+            model = keras.models.model_from_config(model_config)
+        elif hasattr(keras.saving, 'model_from_config'):
+            model = keras.saving.model_from_config(model_config)
+        # Método 2: model_from_json (si config es string JSON)
+        elif isinstance(model_config, str):
+            model = keras.models.model_from_json(model_config)
+        else:
+            # Convertir dict a JSON string y usar model_from_json
+            model = keras.models.model_from_json(json.dumps(model_config))
+    except Exception as e:
+        # Si falla, intentar con keras.saving (Keras 3)
+        try:
+            if hasattr(keras.saving, 'load_model'):
+                # Último recurso: intentar cargar como si fuera un modelo completo
+                # (aunque no debería funcionar sin los pesos)
+                raise ValueError(f"No se pudo reconstruir el modelo. Error: {e}")
+        except Exception as e2:
+            raise ValueError(f"Error al cargar modelo desde config.json: {e2}. Config keys: {list(model_config_json.keys()) if isinstance(model_config_json, dict) else 'N/A'}")
     
-    # Intentar obtener configuración desde metadata si existe
-    metadata_path = model_path.replace('.keras', '_metadata.json')
-    if os.path.exists(metadata_path):
-        import json
-        with open(metadata_path, 'r', encoding='utf-8') as f:
+    # Cargar los pesos
+    try:
+        model.load_weights(weights_file)
+    except Exception as e:
+        raise ValueError(f"Error al cargar pesos desde {weights_file}: {e}")
+    
+    # Cargar metadata para obtener configuración de imagen y clases
+    if os.path.exists(metadata_file):
+        with open(metadata_file, 'r', encoding='utf-8') as f:
             metadata = json.load(f)
             config = {
                 'data': {
@@ -168,16 +212,28 @@ def load_classifier_model_from_hf():
                 }
             }
     else:
-        # Configuración por defecto para EfficientNetV2
-        config = {
-            'data': {
-                'image_size': 256,  # EfficientNetV2 típicamente usa 256
-                'num_classes': 13
-            },
-            'model': {
-                'architecture': 'efficientnet_v2'
+        # Intentar obtener de config.json si metadata no existe
+        if 'image_size' in model_config_json:
+            config = {
+                'data': {
+                    'image_size': model_config_json.get('image_size', 256),
+                    'num_classes': model_config_json.get('num_classes', 13)
+                },
+                'model': {
+                    'architecture': model_config_json.get('architecture', 'efficientnet_v2')
+                }
             }
-        }
+        else:
+            # Configuración por defecto para EfficientNetV2
+            config = {
+                'data': {
+                    'image_size': 256,  # EfficientNetV2 típicamente usa 256
+                    'num_classes': 13
+                },
+                'model': {
+                    'architecture': 'efficientnet_v2'
+                }
+            }
     
     return model, config
 
