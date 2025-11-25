@@ -205,74 +205,41 @@ def preprocess_image_for_pytorch(image: Image.Image, image_size: int = 224):
     return image_tensor
 
 
-def preprocess_image_for_tensorflow(image: Image.Image, image_size: int = 224):
-    """Preprocesar imagen para modelo TensorFlow/Keras"""
+def preprocess_image_for_tensorflow(image: Image.Image, image_size: int = 300):
+    """Preprocesar imagen para modelo TensorFlow/Keras (EfficientNet)
+    
+    Usa el mismo preprocesamiento que el entrenamiento original:
+    - Tamaño: 300x300 (EfficientNet-B3)
+    - Preprocesamiento: tf.keras.applications.efficientnet.preprocess_input
+    """
     image_resized = image.resize((image_size, image_size))
     image_array = np.array(image_resized.convert('RGB'))
-    image_array = image_array.astype('float32') / 255.0
-    
-    mean = np.array([0.485, 0.456, 0.406])
-    std = np.array([0.229, 0.224, 0.225])
-    image_array = (image_array - mean) / std
-    
     image_array = np.expand_dims(image_array, axis=0)
+    # Aplicar el preprocesamiento de EfficientNet (igual que en entrenamiento)
+    image_array = tf.keras.applications.efficientnet.preprocess_input(image_array)
     
     return image_array
 
 
-def predict_identifier(model, image_array, classifier_result=None):
-    """Hacer predicción con modelo identificador (binario: Piciforme o No Piciforme) usando Keras"""
+def predict_identifier(model, image_array):
+    """Hacer predicción con modelo identificador (binario: Piciforme o No Piciforme) usando Keras
+    
+    El modelo fue entrenado con TARGET_NAMES = ['No_Piciformes', 'Piciformes']
+    Por lo tanto:
+    - prediction[0][0] = probabilidad de No_Piciformes (clase 0)
+    - prediction[0][1] = probabilidad de Piciformes (clase 1)
+    
+    Umbral de decisión: prob_piciformes >= 0.5
+    """
     predictions = model.predict(image_array, verbose=0)
     
-    if predictions.shape[1] == 2:
-        prob_0 = float(predictions[0][0])
-        prob_1 = float(predictions[0][1])
-        
-        prob_piciforme_A = prob_0
-        prob_no_piciforme_A = prob_1
-        
-        prob_piciforme_B = prob_1
-        prob_no_piciforme_B = prob_0
-        
-        if classifier_result is not None and len(classifier_result) > 0:
-            top_prob = classifier_result[0]['probability']
-            
-            if top_prob > 0.5:
-                is_piciforme_A = prob_piciforme_A > 0.5
-                is_piciforme_B = prob_piciforme_B > 0.5
-                
-                if is_piciforme_B and not is_piciforme_A:
-                    prob_piciforme = prob_piciforme_B
-                    prob_no_piciforme = prob_no_piciforme_B
-                else:
-                    prob_piciforme = prob_piciforme_A
-                    prob_no_piciforme = prob_no_piciforme_A
-            else:
-                if prob_piciforme_A > prob_piciforme_B:
-                    prob_piciforme = prob_piciforme_A
-                    prob_no_piciforme = prob_no_piciforme_A
-                else:
-                    prob_piciforme = prob_piciforme_B
-                    prob_no_piciforme = prob_no_piciforme_B
-        else:
-            prob_piciforme = prob_piciforme_A
-            prob_no_piciforme = prob_no_piciforme_A
-    else:
-        prob_raw = float(predictions[0][0])
-        prob_piciforme = prob_raw
-        prob_no_piciforme = 1.0 - prob_raw
-        
-        if classifier_result is not None and len(classifier_result) > 0:
-            top_prob = classifier_result[0]['probability']
-            if top_prob > 0.5 and prob_piciforme < 0.5:
-                prob_piciforme, prob_no_piciforme = prob_no_piciforme, prob_piciforme
+    # El modelo devuelve [prob_no_piciforme, prob_piciforme]
+    # Exactamente como en el entrenamiento original del Colab
+    prob_no_piciforme = float(predictions[0][0])
+    prob_piciforme = float(predictions[0][1])
     
-    total = prob_piciforme + prob_no_piciforme
-    if total > 0:
-        prob_piciforme = prob_piciforme / total
-        prob_no_piciforme = prob_no_piciforme / total
-    
-    is_piciforme = prob_piciforme > 0.5
+    # Umbral >= 0.5 para clasificar como Piciforme
+    is_piciforme = prob_piciforme >= 0.5
     
     return {
         'is_piciforme': is_piciforme,
@@ -407,7 +374,7 @@ def main():
                 st.subheader("🔍 Paso 1: Identificación")
                 
                 image_array_tf = preprocess_image_for_tensorflow(image_to_predict, identifier_image_size)
-                identifier_result = predict_identifier(identifier_model, image_array_tf, classifier_result=classifier_predictions)
+                identifier_result = predict_identifier(identifier_model, image_array_tf)
                 
                 col1, col2, col3 = st.columns(3)
                 
