@@ -140,6 +140,17 @@ def load_identifier_model_from_hf():
     except Exception as e:
         raise ValueError(f"Error al cargar pesos desde {weights_file}: {e}")
     
+    # Obtener el tamaño de imagen del modelo directamente desde input_shape
+    input_shape = model.input_shape
+    if input_shape and len(input_shape) >= 2:
+        # input_shape es (None, height, width, channels) o (batch, height, width, channels)
+        image_size = input_shape[1]  # height y width deberían ser iguales
+    else:
+        image_size = 300  # Valor por defecto si no se puede obtener
+    
+    # Guardar el tamaño en el modelo para usarlo después
+    model._identifier_image_size = image_size
+    
     return model
 
 
@@ -415,9 +426,6 @@ def main():
         identifier_loaded = 'identifier_model' in st.session_state
         classifier_loaded = 'classifier_model' in st.session_state
         
-        config = st.session_state.get('config', {})
-        image_size = config.get('data', {}).get('image_size', 256)
-        
         st.info(f"""
         **Identificador**: {'✅ Cargado' if identifier_loaded else '❌ No cargado'}
         **Clasificador**: {'✅ Cargado' if classifier_loaded else '❌ No cargado'}
@@ -471,16 +479,19 @@ def main():
             device = st.session_state.device
             
             with st.spinner("🔍 Analizando imagen..."):
-                image_size = 224
+                # Obtener tamaño de imagen para cada modelo
+                classifier_image_size = 224  # PyTorch clasificador usa 224
+                identifier_image_size = getattr(identifier_model, '_identifier_image_size', 300)  # Keras identificador usa 300
                 
                 # Primero ejecutar clasificador multiclase para usar como referencia
-                image_tensor_pt = preprocess_image_for_pytorch(image_to_predict, image_size)
+                image_tensor_pt = preprocess_image_for_pytorch(image_to_predict, classifier_image_size)
                 classifier_predictions = predict_classifier(classifier_model, image_tensor_pt, device, idx_to_class, top_k=5)
                 
                 # Paso 1: Identificar si es Piciforme (usando clasificador como validación cruzada)
                 st.subheader("🔍 Paso 1: Identificación")
                 
-                image_array_tf = preprocess_image_for_tensorflow(image_to_predict, image_size)
+                # Preprocesar imagen para identificador con el tamaño correcto
+                image_array_tf = preprocess_image_for_tensorflow(image_to_predict, identifier_image_size)
                 
                 # Pasar resultado del clasificador para corregir interpretación del identificador
                 identifier_result = predict_identifier(identifier_model, image_array_tf, classifier_result=classifier_predictions)
