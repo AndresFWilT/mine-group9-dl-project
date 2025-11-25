@@ -51,11 +51,11 @@ st.set_page_config(
 
 # URLs de descarga directa de los modelos en Hugging Face
 # NOTA: Los repositorios tienen nombres intercambiados
-IDENTIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/clasificador-pisciformes/resolve/main/clasificador_aves_piciformes.h5"
-CLASSIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/clasificador-pisciformes/resolve/main/clasificador_aves_piciformes_efficientnetv2.keras.zip"
-IDENTIFIER_FILENAME = "clasificador_aves_piciformes.h5"
-CLASSIFIER_FILENAME = "clasificador_aves_piciformes_efficientnetv2.keras"
-CLASSIFIER_ZIP_FILENAME = "clasificador_aves_piciformes_efficientnetv2.keras.zip"
+IDENTIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/clasificador-pisciformes/resolve/main/clasificador_aves_piciformes_efficientnetv2.keras.zip"
+CLASSIFIER_MODEL_URL = "https://huggingface.co/AndresFWilT/identificador-pisciformes/resolve/main/best_model.pt"
+IDENTIFIER_FILENAME = "clasificador_aves_piciformes_efficientnetv2.keras"
+IDENTIFIER_ZIP_FILENAME = "clasificador_aves_piciformes_efficientnetv2.keras.zip"
+CLASSIFIER_FILENAME = "best_model.pt"
 
 # Cargar mapeo de clases
 @st.cache_data
@@ -85,30 +85,7 @@ def load_class_mapping():
 
 @st.cache_resource
 def load_identifier_model_from_hf():
-    """Cargar modelo identificador (.h5) desde Hugging Face"""
-    if not TF_AVAILABLE:
-        raise ImportError("TensorFlow no está disponible. Instala con: pip install tensorflow")
-    
-    # URL de descarga directa
-    model_url = IDENTIFIER_MODEL_URL
-    model_path = IDENTIFIER_FILENAME
-    
-    # Descargar modelo si no existe
-    if not os.path.exists(model_path):
-        response = requests.get(model_url)
-        response.raise_for_status()
-        with open(model_path, 'wb') as f:
-            f.write(response.content)
-    
-    # Cargar modelo Keras
-    model = keras.models.load_model(model_path)
-    
-    return model
-
-
-@st.cache_resource
-def load_classifier_model_from_hf():
-    """Cargar modelo clasificador (Keras v3) desde Hugging Face
+    """Cargar modelo identificador (Keras v3) desde Hugging Face
     El zip contiene: model.weights.h5, config.json, metadata.json
     """
     if not TF_AVAILABLE:
@@ -118,14 +95,13 @@ def load_classifier_model_from_hf():
     import json
     
     # URL de descarga directa
-    model_url = CLASSIFIER_MODEL_URL
-    zip_path = CLASSIFIER_ZIP_FILENAME
-    extract_dir = os.path.dirname(CLASSIFIER_FILENAME) or '.'
+    model_url = IDENTIFIER_MODEL_URL
+    zip_path = IDENTIFIER_ZIP_FILENAME
+    extract_dir = os.path.dirname(IDENTIFIER_FILENAME) or '.'
     
     # Archivos esperados dentro del zip
     weights_file = os.path.join(extract_dir, 'model.weights.h5')
     config_file = os.path.join(extract_dir, 'config.json')
-    metadata_file = os.path.join(extract_dir, 'metadata.json')
     
     # Descargar modelo zip si no existe
     if not os.path.exists(zip_path):
@@ -164,43 +140,78 @@ def load_classifier_model_from_hf():
     except Exception as e:
         raise ValueError(f"Error al cargar pesos desde {weights_file}: {e}")
     
-    # Obtener el tamaño de imagen del modelo directamente desde input_shape
-    input_shape = model.input_shape
-    if input_shape and len(input_shape) >= 2:
-        # input_shape es (None, height, width, channels) o (batch, height, width, channels)
-        image_size = input_shape[1]  # height y width deberían ser iguales
+    return model
+
+
+@st.cache_resource
+def load_classifier_model_from_hf():
+    """Cargar modelo clasificador (.pt) desde Hugging Face"""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # URL de descarga directa
+    model_url = CLASSIFIER_MODEL_URL
+    model_path = CLASSIFIER_FILENAME
+    
+    # Descargar modelo si no existe
+    if not os.path.exists(model_path):
+        response = requests.get(model_url)
+        response.raise_for_status()
+        with open(model_path, 'wb') as f:
+            f.write(response.content)
+    
+    # Cargar checkpoint primero para obtener la configuración
+    checkpoint = torch.load(model_path, map_location=device)
+    
+    # Intentar obtener configuración del checkpoint
+    if isinstance(checkpoint, dict) and 'config' in checkpoint:
+        config = checkpoint['config']
     else:
-        image_size = 300  # Valor por defecto si no se puede obtener
+        # Cargar configuración desde archivo
+        config_path = "configs/config.yaml"
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+        else:
+            # Configuración por defecto - basada en el error, parece ser EfficientNet-B3
+            config = {
+                'data': {
+                    'image_size': 224,
+                    'num_classes': 13
+                },
+                'model': {
+                    'architecture': 'efficientnet_b3',
+                    'pretrained': True,
+                    'dropout_rate_1': 0.5,
+                    'dropout_rate_2': 0.3,
+                    'hidden_dim_1': 512,
+                    'hidden_dim_2': 256
+                }
+            }
     
-    # Cargar metadata para obtener número de clases y arquitectura
-    if os.path.exists(metadata_file):
-        with open(metadata_file, 'r', encoding='utf-8') as f:
-            metadata = json.load(f)
-            num_classes = metadata.get('num_classes', 13)
-            architecture = metadata.get('architecture', 'efficientnet_v2')
+    # Crear modelo
+    model = create_model_from_config(config)
+    
+    # Cargar pesos
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        state_dict = checkpoint['model_state_dict']
     else:
-        # Intentar obtener de config.json si metadata no existe
-        num_classes = model_config_json.get('num_classes', 13)
-        architecture = model_config_json.get('architecture', 'efficientnet_v2')
-        if not num_classes:
-            # Obtener del modelo si está disponible
-            output_shape = model.output_shape
-            if output_shape and len(output_shape) >= 1:
-                num_classes = output_shape[-1]
-            else:
-                num_classes = 13
+        state_dict = checkpoint
     
-    config = {
-        'data': {
-            'image_size': image_size,
-            'num_classes': num_classes
-        },
-        'model': {
-            'architecture': architecture
-        }
-    }
+    # Remover el prefijo "backbone." de las claves si existe
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('backbone.'):
+            new_key = key.replace('backbone.', '', 1)
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value
     
-    return model, config
+    model.load_state_dict(new_state_dict, strict=False)
+    
+    model = model.to(device)
+    model.eval()
+    
+    return model, device, config
 
 
 def preprocess_image_for_pytorch(image: Image.Image, image_size: int = 224):
@@ -331,30 +342,28 @@ def predict_identifier(model, image_array, classifier_result=None):
     }
 
 
-def predict_classifier(model, image_array, idx_to_class, top_k=5):
-    """Hacer predicción con modelo clasificador (multiclase) usando Keras"""
-    # Hacer predicción
-    predictions = model.predict(image_array, verbose=0)
+def predict_classifier(model, image_tensor, device, idx_to_class, top_k=5):
+    """Hacer predicción con modelo clasificador (multiclase) usando PyTorch"""
+    model.eval()
+    image_tensor = image_tensor.to(device)
     
-    # Obtener probabilidades (el modelo ya debería tener softmax en la última capa)
-    if len(predictions.shape) > 1:
-        probs = predictions[0]
-    else:
-        probs = predictions
+    with torch.no_grad():
+        outputs = model(image_tensor)
+        probs = torch.softmax(outputs, dim=1)
+        prob_values, indices = torch.topk(probs, k=min(top_k, len(idx_to_class)))
     
-    # Obtener top-k índices y probabilidades
-    top_indices = np.argsort(probs)[::-1][:min(top_k, len(idx_to_class))]
-    top_probs = probs[top_indices]
+    prob_values = prob_values.cpu().numpy()[0]
+    indices = indices.cpu().numpy()[0]
     
-    predictions_list = []
-    for idx, prob in zip(top_indices, top_probs):
-        predictions_list.append({
+    predictions = []
+    for idx, prob in zip(indices, prob_values):
+        predictions.append({
             'class': idx_to_class[idx],
             'probability': float(prob),
             'confidence': f"{prob*100:.2f}%"
         })
     
-    return predictions_list
+    return predictions
 
 
 def format_class_name(class_name: str) -> str:
@@ -388,9 +397,10 @@ def main():
                     st.session_state.identifier_model = identifier_model
                     st.success("✅ Identificador cargado")
                     
-                    # Cargar clasificador (Keras v3)
-                    classifier_model, config = load_classifier_model_from_hf()
+                    # Cargar clasificador (PyTorch)
+                    classifier_model, device, config = load_classifier_model_from_hf()
                     st.session_state.classifier_model = classifier_model
+                    st.session_state.device = device
                     st.session_state.config = config
                     st.success("✅ Clasificador cargado")
                     
@@ -410,9 +420,9 @@ def main():
         
         st.info(f"""
         **Identificador**: {'✅ Cargado' if identifier_loaded else '❌ No cargado'}
-        **Clasificador**: {'✅ Cargado (Keras v3)' if classifier_loaded else '❌ No cargado'}
+        **Clasificador**: {'✅ Cargado' if classifier_loaded else '❌ No cargado'}
         **Clases**: {len(class_names)}
-        **Tamaño de imagen**: {image_size}×{image_size}
+        **Dispositivo**: {st.session_state.get('device', 'No cargado')}
         **Formato**: JPG, PNG, JPEG
         """)
     
@@ -444,12 +454,8 @@ def main():
         
         with col2:
             st.subheader("🔍 Preprocesada")
-            # Mostrar ambos tamaños (identificador y clasificador)
-            config = st.session_state.get('config', {})
-            classifier_size = config.get('data', {}).get('image_size', 300)
-            identifier_size = 224
-            processed_display = image_to_predict.resize((classifier_size, classifier_size))
-            st.image(processed_display, caption=f"Clasificador: {classifier_size}×{classifier_size} | Identificador: {identifier_size}×{identifier_size}", 
+            processed_display = image_to_predict.resize((224, 224))
+            st.image(processed_display, caption="224×224 (entrada del modelo)", 
                     use_container_width=True)
     
     # Predicción
@@ -462,28 +468,22 @@ def main():
         if st.button("🚀 Identificar Ave Piciforme", type="primary", use_container_width=True):
             identifier_model = st.session_state.identifier_model
             classifier_model = st.session_state.classifier_model
-            config = st.session_state.get('config', {})
-            
-            # Obtener tamaños de imagen para cada modelo
-            classifier_image_size = config.get('data', {}).get('image_size', 300)
-            # El identificador siempre usa 224x224
-            identifier_image_size = 224
+            device = st.session_state.device
             
             with st.spinner("🔍 Analizando imagen..."):
-                # Preprocesar imagen para clasificador (300x300)
-                image_array_classifier = preprocess_image_for_tensorflow(image_to_predict, classifier_image_size)
-                
-                # Preprocesar imagen para identificador (224x224)
-                image_array_identifier = preprocess_image_for_tensorflow(image_to_predict, identifier_image_size)
+                image_size = 224
                 
                 # Primero ejecutar clasificador multiclase para usar como referencia
-                classifier_predictions = predict_classifier(classifier_model, image_array_classifier, idx_to_class, top_k=5)
+                image_tensor_pt = preprocess_image_for_pytorch(image_to_predict, image_size)
+                classifier_predictions = predict_classifier(classifier_model, image_tensor_pt, device, idx_to_class, top_k=5)
                 
                 # Paso 1: Identificar si es Piciforme (usando clasificador como validación cruzada)
                 st.subheader("🔍 Paso 1: Identificación")
                 
+                image_array_tf = preprocess_image_for_tensorflow(image_to_predict, image_size)
+                
                 # Pasar resultado del clasificador para corregir interpretación del identificador
-                identifier_result = predict_identifier(identifier_model, image_array_identifier, classifier_result=classifier_predictions)
+                identifier_result = predict_identifier(identifier_model, image_array_tf, classifier_result=classifier_predictions)
                 
                 # Mostrar resultado del identificador
                 col1, col2, col3 = st.columns(3)
