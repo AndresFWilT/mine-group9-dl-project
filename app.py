@@ -164,42 +164,41 @@ def load_classifier_model_from_hf():
     except Exception as e:
         raise ValueError(f"Error al cargar pesos desde {weights_file}: {e}")
     
-    # Cargar metadata para obtener configuración de imagen y clases
+    # Obtener el tamaño de imagen del modelo directamente desde input_shape
+    input_shape = model.input_shape
+    if input_shape and len(input_shape) >= 2:
+        # input_shape es (None, height, width, channels) o (batch, height, width, channels)
+        image_size = input_shape[1]  # height y width deberían ser iguales
+    else:
+        image_size = 300  # Valor por defecto si no se puede obtener
+    
+    # Cargar metadata para obtener número de clases y arquitectura
     if os.path.exists(metadata_file):
         with open(metadata_file, 'r', encoding='utf-8') as f:
             metadata = json.load(f)
-            config = {
-                'data': {
-                    'image_size': metadata.get('image_size', 256),
-                    'num_classes': metadata.get('num_classes', 13)
-                },
-                'model': {
-                    'architecture': metadata.get('architecture', 'efficientnet_v2')
-                }
-            }
+            num_classes = metadata.get('num_classes', 13)
+            architecture = metadata.get('architecture', 'efficientnet_v2')
     else:
         # Intentar obtener de config.json si metadata no existe
-        if 'image_size' in model_config_json:
-            config = {
-                'data': {
-                    'image_size': model_config_json.get('image_size', 256),
-                    'num_classes': model_config_json.get('num_classes', 13)
-                },
-                'model': {
-                    'architecture': model_config_json.get('architecture', 'efficientnet_v2')
-                }
-            }
-        else:
-            # Configuración por defecto para EfficientNetV2
-            config = {
-                'data': {
-                    'image_size': 256,  # EfficientNetV2 típicamente usa 256
-                    'num_classes': 13
-                },
-                'model': {
-                    'architecture': 'efficientnet_v2'
-                }
-            }
+        num_classes = model_config_json.get('num_classes', 13)
+        architecture = model_config_json.get('architecture', 'efficientnet_v2')
+        if not num_classes:
+            # Obtener del modelo si está disponible
+            output_shape = model.output_shape
+            if output_shape and len(output_shape) >= 1:
+                num_classes = output_shape[-1]
+            else:
+                num_classes = 13
+    
+    config = {
+        'data': {
+            'image_size': image_size,
+            'num_classes': num_classes
+        },
+        'model': {
+            'architecture': architecture
+        }
+    }
     
     return model, config
 
