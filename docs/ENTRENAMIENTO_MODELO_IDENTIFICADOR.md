@@ -122,13 +122,13 @@ flowchart TB
         IMG["🖼️ Imagen<br/>300×300×3"]
     end
 
-    subgraph EFFICIENTNET["EfficientNetB3 (Pre-entrenado ImageNet)"]
-        direction TB
+    subgraph EFFICIENTNET["EfficientNetB3"]
+        BACKBONE_DESC["Pre-entrenado ImageNet"]
         CONV["Bloques Convolucionales<br/>~12M parámetros"]
         
         subgraph LAYERS["Estado de Capas"]
-            L1["Capas 0-149: 🔒 Congeladas<br/><i>Features genéricos</i>"]
-            L2["Capas 150+: 🔓 Entrenables<br/><i>Fine-tuning</i>"]
+            L1["Capas 0-149: 🔒 Congeladas"]
+            L2["Capas 150+: 🔓 Entrenables"]
         end
     end
 
@@ -136,26 +136,21 @@ flowchart TB
         GAP["Global Average<br/>Pooling 2D"]
     end
 
-    subgraph CLASSIFIER["Clasificador Personalizado"]
-        direction TB
-        FC1["Dense(512)<br/>BatchNorm + ReLU<br/>Dropout(0.5)"]
-        FC2["Dense(256)<br/>BatchNorm + ReLU<br/>Dropout(0.3)"]
-        FC3["Dense(2)<br/>Softmax"]
+    subgraph CLASSIFIER["Clasificador"]
+        FC1["Dense(512) + ReLU<br/>Dropout(0.5)"]
+        FC2["Dense(256) + ReLU<br/>Dropout(0.3)"]
+        FC3["Dense(2) + Softmax"]
     end
 
     subgraph OUTPUT["Salida"]
-        direction LR
-        C0["No Piciforme<br/>P(clase=0)"]
-        C1["Piciforme<br/>P(clase=1)"]
+        C0["No Piciforme"]
+        C1["Piciforme"]
     end
 
-    IMG --> CONV
+    IMG --> BACKBONE_DESC --> CONV
     CONV --> GAP
-    GAP --> FC1
-    FC1 --> FC2
-    FC2 --> FC3
-    FC3 --> C0
-    FC3 --> C1
+    GAP --> FC1 --> FC2 --> FC3
+    FC3 --> C0 & C1
 
     style INPUT fill:#bbdefb
     style EFFICIENTNET fill:#c8e6c9
