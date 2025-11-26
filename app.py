@@ -532,7 +532,7 @@ def main():
     st.markdown(
         "<div style='text-align: center; color: gray;'>"
         "BirdID-Piciformes - Proyecto Final Deep Learning | Grupo 9<br>"
-        "Modelos: Identificador (EfficientNetV2/Keras v3) + Clasificador (EfficientNet-B3/PyTorch)"
+        "Modelos: Identificador (EfficientNetB3/Keras 3.x) + Clasificador (EfficientNet-B2/PyTorch)"
         "</div>",
         unsafe_allow_html=True
     )
