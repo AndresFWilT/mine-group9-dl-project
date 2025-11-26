@@ -8,6 +8,201 @@ Este modelo constituye la primera etapa del sistema de clasificación en cascada
 
 ---
 
+## 1.1 Diagrama de Flujo del Entrenamiento
+
+> **Nota:** Para exportar como imagen, copiar el código Mermaid a [mermaid.live](https://mermaid.live) y descargar como PNG/SVG.
+
+```mermaid
+flowchart TB
+    subgraph DATA["📊 1. DATOS DE ENTRADA"]
+        direction LR
+        P["🐦 Piciformes<br/>~7,270 imgs<br/><i>Ramphastidae, Picidae</i>"]
+        NP["🚫 No Piciformes<br/>~7,270 imgs<br/><i>Otros órdenes</i>"]
+        P --> TOTAL["📁 Total: 14,540 imágenes<br/>Clases balanceadas"]
+        NP --> TOTAL
+    end
+
+    subgraph SPLIT["📂 2. PARTICIÓN DEL DATASET"]
+        direction LR
+        TOTAL --> TRAIN["🎓 Entrenamiento<br/>70% (10,178 imgs)<br/><i>Optimización</i>"]
+        TOTAL --> VAL["📝 Validación<br/>15% (2,181 imgs)<br/><i>Monitoreo</i>"]
+        TOTAL --> TEST["🏆 Prueba<br/>15% (2,181 imgs)<br/><i>Evaluación final</i>"]
+    end
+
+    subgraph AUG["🔄 3. DATA AUGMENTATION"]
+        direction LR
+        TRAIN --> ROT["Rotación ±20°"]
+        TRAIN --> SHIFT["Desplazamiento 20%"]
+        TRAIN --> FLIP["Flip Horizontal"]
+        ROT --> AUGOUT["ImageDataGenerator"]
+        SHIFT --> AUGOUT
+        FLIP --> AUGOUT
+    end
+
+    subgraph PREPROCESS["⚙️ 4. PREPROCESAMIENTO"]
+        AUGOUT --> RESIZE["Resize: 300×300×3 RGB"]
+        RESIZE --> NORM["EfficientNet preprocess_input"]
+    end
+
+    subgraph MODEL["🧠 5. ARQUITECTURA DEL MODELO"]
+        direction TB
+        NORM --> INPUT["📥 Input Layer<br/>(300, 300, 3)"]
+        INPUT --> BACKBONE
+        
+        subgraph BACKBONE["EfficientNetB3 - ImageNet"]
+            direction TB
+            FROZEN["🔒 Capas 0-149<br/>CONGELADAS"]
+            UNFROZEN["🔓 Capas 150+<br/>AJUSTABLES"]
+        end
+        
+        BACKBONE --> GAP["Global Average Pooling 2D"]
+        GAP --> HEAD
+        
+        subgraph HEAD["Clasificador (Head)"]
+            direction TB
+            D1["Dense(512) + ReLU<br/>Dropout(0.5)"]
+            D2["Dense(256) + ReLU<br/>Dropout(0.3)"]
+            OUT["Dense(2) + Softmax"]
+            D1 --> D2 --> OUT
+        end
+    end
+
+    subgraph TRAINING["🏋️ 6. ENTRENAMIENTO"]
+        direction TB
+        HEAD --> PHASE1
+        
+        subgraph PHASE1["FASE 1: Head Only"]
+            P1_CONFIG["Épocas: 10<br/>LR: 1×10⁻³<br/>Backbone: 🔒 Congelado"]
+            P1_RESULT["82% → 93% accuracy"]
+        end
+        
+        PHASE1 --> PHASE2
+        
+        subgraph PHASE2["FASE 2: Fine-Tuning"]
+            P2_CONFIG["Épocas: 15<br/>LR: 1×10⁻⁵<br/>Backbone: 🔓 Descongelado"]
+            P2_RESULT["93% → 95% accuracy"]
+        end
+    end
+
+    subgraph EVAL["📈 7. EVALUACIÓN FINAL"]
+        direction TB
+        PHASE2 --> METRICS["Accuracy: 93.03%<br/>F1-Score: 93.02%<br/>Loss: 0.1831"]
+        TEST --> METRICS
+        METRICS --> CM["Matriz de Confusión<br/>TN: 1,065 | FP: 48<br/>FN: 104 | TP: 964"]
+    end
+
+    subgraph SAVE["💾 8. PERSISTENCIA"]
+        direction LR
+        CM --> KERAS[".keras<br/><i>Keras 3.x</i>"]
+        CM --> H5[".h5<br/><i>Legacy</i>"]
+        KERAS --> HF["🤗 Hugging Face Hub"]
+        H5 --> HF
+    end
+
+    subgraph INFRA["🖥️ 9. INFRAESTRUCTURA"]
+        HF --> GPU["NVIDIA A100-80GB<br/>CUDA 12.4<br/>TensorFlow 2.x<br/>~2 horas"]
+    end
+
+    style DATA fill:#e1f5fe
+    style SPLIT fill:#fff3e0
+    style AUG fill:#f3e5f5
+    style PREPROCESS fill:#e8f5e9
+    style MODEL fill:#fce4ec
+    style TRAINING fill:#fff8e1
+    style EVAL fill:#e0f2f1
+    style SAVE fill:#f1f8e9
+    style INFRA fill:#eceff1
+```
+
+### Diagrama de Arquitectura de la Red
+
+```mermaid
+flowchart TB
+    subgraph INPUT["Entrada"]
+        IMG["🖼️ Imagen<br/>300×300×3"]
+    end
+
+    subgraph EFFICIENTNET["EfficientNetB3 (Pre-entrenado ImageNet)"]
+        direction TB
+        CONV["Bloques Convolucionales<br/>~12M parámetros"]
+        
+        subgraph LAYERS["Estado de Capas"]
+            L1["Capas 0-149: 🔒 Congeladas<br/><i>Features genéricos</i>"]
+            L2["Capas 150+: 🔓 Entrenables<br/><i>Fine-tuning</i>"]
+        end
+    end
+
+    subgraph POOLING["Reducción"]
+        GAP["Global Average<br/>Pooling 2D"]
+    end
+
+    subgraph CLASSIFIER["Clasificador Personalizado"]
+        direction TB
+        FC1["Dense(512)<br/>BatchNorm + ReLU<br/>Dropout(0.5)"]
+        FC2["Dense(256)<br/>BatchNorm + ReLU<br/>Dropout(0.3)"]
+        FC3["Dense(2)<br/>Softmax"]
+    end
+
+    subgraph OUTPUT["Salida"]
+        direction LR
+        C0["No Piciforme<br/>P(clase=0)"]
+        C1["Piciforme<br/>P(clase=1)"]
+    end
+
+    IMG --> CONV
+    CONV --> GAP
+    GAP --> FC1
+    FC1 --> FC2
+    FC2 --> FC3
+    FC3 --> C0
+    FC3 --> C1
+
+    style INPUT fill:#bbdefb
+    style EFFICIENTNET fill:#c8e6c9
+    style POOLING fill:#fff9c4
+    style CLASSIFIER fill:#ffccbc
+    style OUTPUT fill:#d1c4e9
+```
+
+### Diagrama del Proceso de Entrenamiento en Dos Fases
+
+```mermaid
+flowchart LR
+    subgraph FASE1["🔒 FASE 1: Entrenamiento del Head"]
+        direction TB
+        F1_IN["Dataset<br/>Entrenamiento"]
+        F1_CONFIG["Configuración:<br/>• Épocas: 10<br/>• LR: 0.001<br/>• Optimizer: Adam<br/>• Backbone: Congelado"]
+        F1_TRAIN["Forward → Loss → Backward<br/>Solo actualiza Head"]
+        F1_OUT["Resultado:<br/>82% → 93% acc"]
+        
+        F1_IN --> F1_CONFIG --> F1_TRAIN --> F1_OUT
+    end
+
+    subgraph FASE2["🔓 FASE 2: Fine-Tuning"]
+        direction TB
+        F2_IN["Modelo de Fase 1"]
+        F2_CONFIG["Configuración:<br/>• Épocas: 15<br/>• LR: 0.00001<br/>• Optimizer: Adam<br/>• Backbone: Descongelado"]
+        F2_TRAIN["Forward → Loss → Backward<br/>Actualiza todo el modelo"]
+        F2_OUT["Resultado:<br/>93% → 95% acc"]
+        
+        F2_IN --> F2_CONFIG --> F2_TRAIN --> F2_OUT
+    end
+
+    FASE1 --> FASE2
+
+    subgraph EVAL["📊 Evaluación"]
+        METRICS["Test Set (2,181 imgs)<br/>───────────────<br/>Accuracy: 93.03%<br/>F1-Score: 93.02%<br/>Loss: 0.1831"]
+    end
+
+    FASE2 --> EVAL
+
+    style FASE1 fill:#e3f2fd
+    style FASE2 fill:#fff3e0
+    style EVAL fill:#e8f5e9
+```
+
+---
+
 ## 2. Conjunto de Datos
 
 ### 2.1 Descripción del Dataset
