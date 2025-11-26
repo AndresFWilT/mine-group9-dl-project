@@ -8,6 +8,323 @@ Este modelo constituye la segunda etapa del sistema de clasificación en cascada
 
 ---
 
+## 1.1 Diagramas del Pipeline de Entrenamiento
+
+> **Nota:** Para exportar como imagen, copiar el código Mermaid a [mermaid.live](https://mermaid.live) y descargar como PNG/SVG.
+
+### Diagrama General del Pipeline
+
+```mermaid
+flowchart TB
+    subgraph DATA["📊 1. ORIGEN DE DATOS"]
+        direction TB
+        BC["🇨🇴 BirdColombia<br/><i>Lista oficial Piciformes</i>"]
+        IN["🌍 iNaturalist<br/><i>Dataset biodiversidad</i>"]
+        BC --> CROSS["∩ Cruce de fuentes"]
+        IN --> CROSS
+        CROSS --> DATASET["📁 13 Clases<br/>12 especies oficiales +<br/>1 'No Inventariado'"]
+    end
+
+    subgraph SPLIT["📂 2. PARTICIÓN"]
+        direction LR
+        DATASET --> TRAIN["🎓 Train 70%<br/><i>Optimización</i>"]
+        DATASET --> VAL["📝 Val 15%<br/><i>Monitoreo</i>"]
+        DATASET --> TEST["🏆 Test 15%<br/><i>Evaluación</i>"]
+    end
+
+    subgraph AUG["🔄 3. DATA AUGMENTATION"]
+        direction TB
+        TRAIN --> AUGS
+        subgraph AUGS["Transformaciones (Solo Train)"]
+            A1["Rotation ±30°"]
+            A2["Flip H/V"]
+            A3["Color Jitter"]
+            A4["Random Crop"]
+            A5["Gaussian Blur"]
+            A6["Random Erasing"]
+        end
+    end
+
+    subgraph PREPROCESS["⚙️ 4. PREPROCESAMIENTO"]
+        AUGS --> RESIZE["Resize: 256×256×3"]
+        RESIZE --> NORM["Normalización ImageNet<br/>mean=[0.485, 0.456, 0.406]<br/>std=[0.229, 0.224, 0.225]"]
+    end
+
+    subgraph MODEL["🧠 5. ARQUITECTURA"]
+        direction TB
+        NORM --> BACKBONE["EfficientNet-B2<br/><i>PyTorch - ImageNet</i>"]
+        BACKBONE --> HEAD["Clasificador Head<br/>512 → 256 → 13"]
+    end
+
+    subgraph TRAINING["🏋️ 6. ENTRENAMIENTO"]
+        direction TB
+        HEAD --> STAGE1["ETAPA 1<br/>Head Only<br/>🔒 Backbone Congelado"]
+        STAGE1 --> STAGE2["ETAPA 2<br/>Fine-Tuning<br/>🔓 Todo Descongelado"]
+    end
+
+    subgraph OPTIM["⚡ 7. OPTIMIZACIÓN"]
+        direction LR
+        STAGE2 --> OPT["AdamW + Cosine Annealing"]
+        OPT --> REG["Regularización:<br/>Dropout, Label Smoothing<br/>Class Weights, Grad Clip"]
+    end
+
+    subgraph EVAL["📈 8. EVALUACIÓN"]
+        direction TB
+        REG --> METRICS["Métricas:<br/>Accuracy, F1, Precision, Recall"]
+        TEST --> METRICS
+        METRICS --> CM["Matriz Confusión 13×13"]
+        METRICS --> CURVES["Curvas de Entrenamiento"]
+    end
+
+    subgraph SAVE["💾 9. PERSISTENCIA"]
+        direction LR
+        CM --> PT[".pt (PyTorch)<br/><i>Checkpoint completo</i>"]
+        PT --> HF["🤗 Hugging Face Hub"]
+    end
+
+    style DATA fill:#e3f2fd
+    style SPLIT fill:#fff3e0
+    style AUG fill:#f3e5f5
+    style PREPROCESS fill:#e8f5e9
+    style MODEL fill:#fce4ec
+    style TRAINING fill:#fff8e1
+    style OPTIM fill:#e0f7fa
+    style EVAL fill:#e0f2f1
+    style SAVE fill:#f1f8e9
+```
+
+### Arquitectura Detallada de la Red (PyTorch)
+
+```mermaid
+flowchart TB
+    subgraph INPUT["📥 Entrada"]
+        IMG["Imagen RGB<br/>256 × 256 × 3"]
+    end
+
+    subgraph BACKBONE["🔷 EfficientNet-B2 (PyTorch)"]
+        direction TB
+        CONV["backbone.features<br/>Bloques MBConv<br/>~9.2M parámetros"]
+        
+        subgraph FREEZE["Estado durante entrenamiento"]
+            F1["🔒 Etapa 1: Congelado<br/><i>requires_grad=False</i>"]
+            F2["🔓 Etapa 2: Entrenable<br/><i>requires_grad=True</i>"]
+        end
+    end
+
+    subgraph CLASSIFIER["🔶 Clasificador Personalizado"]
+        direction TB
+        
+        subgraph POOL["Reducción Espacial"]
+            AAP["AdaptiveAvgPool2d(1)<br/>→ (batch, channels, 1, 1)"]
+            FLAT["Flatten()<br/>→ (batch, 1408)"]
+        end
+
+        subgraph FC1["Capa Densa 1"]
+            L1["Linear(1408 → 512)"]
+            BN1["BatchNorm1d(512)"]
+            R1["ReLU()"]
+            D1["Dropout(0.4)"]
+        end
+
+        subgraph FC2["Capa Densa 2"]
+            L2["Linear(512 → 256)"]
+            BN2["BatchNorm1d(256)"]
+            R2["ReLU()"]
+            D2["Dropout(0.2)"]
+        end
+
+        subgraph OUT["Capa de Salida"]
+            L3["Linear(256 → 13)"]
+            SM["Softmax<br/><i>(implícito en CrossEntropy)</i>"]
+        end
+    end
+
+    subgraph OUTPUT["📤 Salida"]
+        direction LR
+        C0["Clase 0<br/>A. prasinus"]
+        C1["Clase 1<br/>C. melanoleucos"]
+        CD["..."]
+        C12["Clase 12<br/>R. sulfuratus"]
+    end
+
+    IMG --> CONV
+    CONV --> AAP
+    AAP --> FLAT
+    FLAT --> L1 --> BN1 --> R1 --> D1
+    D1 --> L2 --> BN2 --> R2 --> D2
+    D2 --> L3 --> SM
+    SM --> C0
+    SM --> C1
+    SM --> CD
+    SM --> C12
+
+    style INPUT fill:#bbdefb
+    style BACKBONE fill:#c8e6c9
+    style CLASSIFIER fill:#ffccbc
+    style OUTPUT fill:#d1c4e9
+```
+
+### Proceso de Entrenamiento en Dos Etapas
+
+```mermaid
+flowchart TB
+    subgraph INIT["🚀 Inicialización"]
+        direction TB
+        LOAD["Cargar EfficientNet-B2<br/>weights='ImageNet'"]
+        WEIGHTS["Calcular Class Weights<br/><i>Balanceo de clases</i>"]
+        LOAD --> MODEL["Modelo inicializado"]
+        WEIGHTS --> LOSS["CrossEntropyLoss<br/>+ label_smoothing=0.05"]
+    end
+
+    subgraph STAGE1["🔒 ETAPA 1: Entrenamiento del Head"]
+        direction TB
+        
+        S1_FREEZE["freeze_backbone(model)<br/><i>Solo Head entrenable</i>"]
+        
+        subgraph S1_CONFIG["Configuración"]
+            S1_EP["Épocas: 20"]
+            S1_LR["LR: 6×10⁻⁴"]
+            S1_OPT["AdamW"]
+            S1_SCH["Cosine Annealing"]
+            S1_PAT["Early Stop: 10 épocas"]
+        end
+
+        subgraph S1_LOOP["Bucle de Entrenamiento"]
+            S1_FWD["Forward Pass"]
+            S1_LOSS["Loss + Class Weights"]
+            S1_BWD["Backward Pass"]
+            S1_CLIP["Gradient Clipping (1.0)"]
+            S1_STEP["Optimizer Step"]
+        end
+
+        S1_FREEZE --> S1_CONFIG
+        S1_CONFIG --> S1_LOOP
+        S1_LOOP --> S1_VAL["Validación por época"]
+        S1_VAL --> S1_SAVE["Guardar mejor modelo"]
+    end
+
+    subgraph STAGE2["🔓 ETAPA 2: Fine-Tuning Completo"]
+        direction TB
+        
+        S2_UNFREEZE["unfreeze_backbone(model)<br/><i>Todo entrenable</i>"]
+        
+        subgraph S2_CONFIG["Configuración"]
+            S2_EP["Épocas: 80"]
+            S2_LR["LR: 3×10⁻⁴"]
+            S2_OPT["AdamW"]
+            S2_SCH["Cosine Annealing<br/>η_min=1×10⁻⁷"]
+            S2_PAT["Early Stop: 20 épocas"]
+        end
+
+        subgraph S2_LOOP["Bucle de Entrenamiento"]
+            S2_FWD["Forward Pass"]
+            S2_LOSS["Loss + Class Weights"]
+            S2_BWD["Backward Pass"]
+            S2_CLIP["Gradient Clipping (1.0)"]
+            S2_STEP["Optimizer Step"]
+        end
+
+        S2_UNFREEZE --> S2_CONFIG
+        S2_CONFIG --> S2_LOOP
+        S2_LOOP --> S2_VAL["Validación por época"]
+        S2_VAL --> S2_SAVE["Guardar mejor modelo"]
+    end
+
+    subgraph EVAL["📊 Evaluación Final"]
+        direction TB
+        LOAD_BEST["Cargar mejor checkpoint"]
+        TEST_EVAL["Evaluar en Test Set"]
+        REPORT["Classification Report<br/>13 clases"]
+        CONFMAT["Matriz de Confusión"]
+        CURVES["Curvas Loss/Accuracy"]
+        
+        LOAD_BEST --> TEST_EVAL
+        TEST_EVAL --> REPORT
+        TEST_EVAL --> CONFMAT
+        TEST_EVAL --> CURVES
+    end
+
+    INIT --> STAGE1
+    STAGE1 --> STAGE2
+    STAGE2 --> EVAL
+
+    style INIT fill:#e8eaf6
+    style STAGE1 fill:#e3f2fd
+    style STAGE2 fill:#fff3e0
+    style EVAL fill:#e8f5e9
+```
+
+### Data Augmentation Pipeline
+
+```mermaid
+flowchart LR
+    subgraph INPUT["Imagen Original"]
+        IMG["🖼️ Variable size"]
+    end
+
+    subgraph TRANSFORMS["Transformaciones Secuenciales"]
+        direction TB
+        T1["Resize(288, 288)"]
+        T2["RandomCrop(256)"]
+        T3["RandomRotation(30°)"]
+        T4["RandomHorizontalFlip(0.5)"]
+        T5["RandomVerticalFlip(0.1)"]
+        T6["RandomResizedCrop<br/>scale=(0.85, 1.0)"]
+        T7["ColorJitter<br/>brightness=0.2<br/>contrast=0.2<br/>saturation=0.2<br/>hue=0.1"]
+        T8["RandomAffine<br/>translate=(0.1, 0.1)"]
+        T9["GaussianBlur(3)<br/>p=0.2"]
+        T10["ToTensor()"]
+        T11["Normalize(ImageNet)"]
+        T12["RandomErasing<br/>p=0.2"]
+    end
+
+    subgraph OUTPUT["Tensor de Salida"]
+        OUT["📦 (3, 256, 256)<br/>Normalizado"]
+    end
+
+    IMG --> T1 --> T2 --> T3 --> T4 --> T5 --> T6 --> T7 --> T8 --> T9 --> T10 --> T11 --> T12 --> OUT
+
+    style INPUT fill:#ffecb3
+    style TRANSFORMS fill:#e1f5fe
+    style OUTPUT fill:#c8e6c9
+```
+
+### Flujo de Inferencia (Producción)
+
+```mermaid
+flowchart LR
+    subgraph STEP1["Paso 1: Identificador"]
+        ID_IN["🖼️ Imagen"]
+        ID_MODEL["Modelo Binario<br/><i>TensorFlow</i>"]
+        ID_OUT{"¿Piciforme?"}
+        
+        ID_IN --> ID_MODEL --> ID_OUT
+    end
+
+    subgraph STEP2["Paso 2: Clasificador"]
+        CL_PRE["Preprocesamiento<br/>224×224, ImageNet Norm"]
+        CL_MODEL["EfficientNet-B2<br/><i>PyTorch</i>"]
+        CL_SOFT["Softmax"]
+        CL_OUT["Top-5 Predicciones"]
+        
+        CL_PRE --> CL_MODEL --> CL_SOFT --> CL_OUT
+    end
+
+    subgraph RESULT["Resultado Final"]
+        SPECIES["🐦 Especie identificada<br/>+ Confianza"]
+    end
+
+    ID_OUT -->|"✅ Sí"| CL_PRE
+    ID_OUT -->|"❌ No"| STOP["⛔ No clasificar"]
+    CL_OUT --> SPECIES
+
+    style STEP1 fill:#e3f2fd
+    style STEP2 fill:#fff3e0
+    style RESULT fill:#e8f5e9
+```
+
+---
+
 ## 2. Conjunto de Datos
 
 ### 2.1 Origen y Selección de Especies
